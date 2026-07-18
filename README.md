@@ -267,6 +267,20 @@ result = verify("fixture.mp4", duration=30.0)
 assert result.passed
 ```
 
+## vidfix vs moviepy vs raw FFmpeg
+
+| | vidfix | moviepy | raw ffmpeg |
+|---|---|---|---|
+| Exact-spec test fixtures | ✅ one command | ⚠️ manual | ⚠️ long filter incantations |
+| Spec verification + exit codes | ✅ built in | ❌ | ⚠️ ffprobe + shell glue |
+| Install without system FFmpeg | ✅ bundled | ✅ bundled | ❌ |
+| Editing/compositing/effects | ❌ not the goal | ✅ | ✅ |
+| Programmatic frame access | ❌ | ✅ numpy frames | ⚠️ |
+| Speed | ✅ direct filters, stream copy | ⚠️ python frame loop | ✅ |
+
+Use **moviepy** to *edit* videos, **raw ffmpeg** for full control, **vidfix**
+for exact-spec media, quick conversions, and CI checks with zero setup.
+
 ## CI usage
 
 ```yaml
