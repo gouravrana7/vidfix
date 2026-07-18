@@ -18,7 +18,7 @@ exit codes.
 uvx vidfix
 ```
 
-That's it — nothing to install, no FFmpeg setup (it's bundled), no flags to
+That's it — nothing to install, no setup, no flags to
 memorize. vidfix asks what you want, validates every answer as you type it,
 shows you the equivalent one-liner, and runs it. Works for everyone, first try.
 
@@ -29,8 +29,7 @@ uvx vidfix                # try instantly — no install
 pip install vidfix        # or install for keeps (or: uv tool install vidfix)
 ```
 
-FFmpeg is bundled (via imageio-ffmpeg), so it just works — no system FFmpeg
-required.
+Everything vidfix needs is built in — install it and it just works.
 
 ## Quick start
 
@@ -90,9 +89,9 @@ vidfix convert in.mp4 --duration 60s --extend-mode loop -o out.mp4
 vidfix convert in.mp4 --preset df60 -o out.mp4              # 59.94 = exact 60000/1001
 ```
 
-Trims with an unchanged codec use FFmpeg stream copy (instant, no quality loss).
+Trims with an unchanged codec are stream-copied (instant, no quality loss).
 Resolution changes pad with black bars to preserve aspect ratio (`--stretch` to
-disable). Drop-frame rates are passed to FFmpeg as exact rationals
+disable). Drop-frame rates are handled as exact rationals
 (`30000/1001`), never lossy floats.
 
 | Option | Meaning | Default |
@@ -174,12 +173,11 @@ $ vidfix info clip.mp4
 ```
 
 The container name is resolved from the file's `major_brand` tag (mp4/mov/m4a/3gp)
-or the extension — not ffprobe's raw demuxer list (`mov,mp4,m4a,3gp,3g2,mj2`);
+or the extension — not the raw demuxer list (`mov,mp4,m4a,3gp,3g2,mj2`);
 `--json` keeps the raw string as `demuxer` and the tag as `major_brand` alongside
 the friendly `container`. Broadcast rates get their preset-family label in the fps
-line (`df30`, `df60`, `pal25`, `pal50`, `film24`, `film23976`) so QA can read them
-at a glance. Uses system `ffprobe` when available, otherwise parses FFmpeg output
-directly.
+line (`df30`, `df60`, `pal25`, `pal50`, `film24`, `film23976`) so you can read them
+at a glance.
 
 ### `vidfix caption` — burn text into a video
 
@@ -226,7 +224,7 @@ vidfix variants in.mp4 --fps 30,60 --res 720p,1080p -o out/
 | `--fps` | Comma-separated frame rates, e.g. `30,60` | required |
 | `--res` | Comma-separated resolutions, e.g. `720p,1080p` | required |
 | `--codec` | Video codec for all variants | `h264` |
-| `--jobs` | Parallel FFmpeg processes | `min(4, cpus)` |
+| `--jobs` | Parallel worker processes | `min(4, cpus)` |
 
 Exit code is 1 if any variant fails. `vidfix info` takes just the file and
 `--json`; `vidfix preset list` / `preset show NAME` take no options.
@@ -269,20 +267,6 @@ result = verify("fixture.mp4", duration=30.0)
 assert result.passed
 ```
 
-## vidfix vs moviepy vs raw FFmpeg
-
-| | vidfix | moviepy | raw ffmpeg |
-|---|---|---|---|
-| Exact-spec test fixtures | ✅ one command | ⚠️ manual | ⚠️ long filter incantations |
-| Spec verification + exit codes | ✅ built in | ❌ | ⚠️ ffprobe + shell glue |
-| Install without system FFmpeg | ✅ bundled | ✅ bundled | ❌ |
-| Editing/compositing/effects | ❌ not the goal | ✅ | ✅ |
-| Programmatic frame access | ❌ | ✅ numpy frames | ⚠️ |
-| Speed | ✅ direct filters, stream copy | ⚠️ python frame loop | ✅ |
-
-Use **moviepy** to *edit* videos, **raw ffmpeg** for full control, **vidfix**
-for exact-spec media, quick conversions, and CI checks with zero setup.
-
 ## CI usage
 
 ```yaml
@@ -297,7 +281,7 @@ for exact-spec media, quick conversions, and CI checks with zero setup.
 ```bash
 uv sync                                   # install with dev deps
 uv run pytest                             # unit + integration tests
-uv run pytest -m "not integration"        # fast tests only (no FFmpeg)
+uv run pytest -m "not integration"        # fast tests only
 uv run ruff check . && uv run mypy        # lint + strict types
 ```
 
