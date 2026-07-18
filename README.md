@@ -1,8 +1,8 @@
 # vidfix
 
-[![PyPI](https://img.shields.io/pypi/v/vidfix?cacheSeconds=3600)](https://pypi.org/project/vidfix/)
+[![PyPI](https://img.shields.io/pypi/v/vidfix?cacheSeconds=300)](https://pypi.org/project/vidfix/)
 [![CI](https://github.com/gouravrana7/vidfix/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/gouravrana7/vidfix/actions/workflows/ci.yml)
-[![Python](https://img.shields.io/pypi/pyversions/vidfix?cacheSeconds=3600)](https://pypi.org/project/vidfix/)
+[![Python](https://img.shields.io/pypi/pyversions/vidfix?cacheSeconds=300)](https://pypi.org/project/vidfix/)
 [![License](https://img.shields.io/badge/License-PolyForm_Internal_Use-blue.svg)](LICENSE)
 
 **Videos and images, exactly the way you need them.** vidfix is a CLI-first
