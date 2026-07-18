@@ -12,14 +12,25 @@ resolution), generate test clips from nothing, convert any picture or video to
 any format, grab thumbnails and GIFs, and verify media specs in CI with proper
 exit codes.
 
-FFmpeg is bundled (via imageio-ffmpeg), so `pip install vidfix` just works — no
-system FFmpeg required.
+## One command. No syntax to remember.
+
+```bash
+uvx vidfix
+```
+
+That's it — nothing to install, no FFmpeg setup (it's bundled), no flags to
+memorize. vidfix asks what you want, validates every answer as you type it,
+shows you the equivalent one-liner, and runs it. Works for everyone, first try.
 
 ## Install
 
 ```bash
-pip install vidfix        # or: uv tool install vidfix
+uvx vidfix                # try instantly — no install
+pip install vidfix        # or install for keeps (or: uv tool install vidfix)
 ```
+
+FFmpeg is bundled (via imageio-ffmpeg), so it just works — no system FFmpeg
+required.
 
 ## Quick start
 
