@@ -1,6 +1,6 @@
 [project]
 name = "vidfix"
-version = "0.1.0"
+version = "0.1.1"
 description = "CLI toolkit to convert, generate, and verify videos and images to exact specs (fps, duration, resolution, format) — test fixtures, CI checks, and everyday conversions."
 readme = "README.md"
 license = { text = "PolyForm-Internal-Use-1.0.0" }
