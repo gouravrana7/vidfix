@@ -1,0 +1,45 @@
+# Built-in vidfix presets. Values are the same strings the CLI flags accept;
+# drop-frame rates are exact rationals so they never become lossy floats.
+df30:
+  description: NTSC drop-frame 29.97 fps
+  fps: 30000/1001
+  timecode: df
+df60:
+  description: NTSC drop-frame 59.94 fps
+  fps: 60000/1001
+  timecode: df
+ndf30:
+  description: NTSC 29.97 fps, non-drop-frame timecode
+  fps: 30000/1001
+  timecode: ndf
+ndf60:
+  description: NTSC 59.94 fps, non-drop-frame timecode
+  fps: 60000/1001
+  timecode: ndf
+pal25:
+  description: PAL 25 fps
+  fps: "25"
+  timecode: ndf
+ndf25:
+  alias: pal25
+pal50:
+  description: PAL 50 fps
+  fps: "50"
+  timecode: ndf
+film24:
+  description: Film 24 fps
+  fps: "24"
+  timecode: ndf
+film23976:
+  description: Film 23.976 fps (24000/1001)
+  fps: 24000/1001
+  timecode: ndf
+broadcast-1080i:
+  description: Broadcast 1080 PAL, 25 fps
+  fps: "25"
+  res: 1920x1080
+web-720p:
+  description: Web-friendly 720p at 30 fps, h264
+  fps: "30"
+  res: 720p
+  codec: h264
