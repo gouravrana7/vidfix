@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from vidfix.core.ffmpeg import (
@@ -109,3 +111,46 @@ class TestRunnerDiscovery:
         with pytest.raises(Exception) as excinfo:
             runner.run(["-i", "in.mp4", "out.mp4"])
         assert "ffmpeg" in str(excinfo.value).lower()
+
+
+class TestFindFfmpegFallback:
+    def test_imageio_failure_falls_back_to_path(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import imageio_ffmpeg
+
+        import vidfix.core.ffmpeg as fm
+
+        monkeypatch.setattr(
+            imageio_ffmpeg, "get_ffmpeg_exe", lambda: (_ for _ in ()).throw(RuntimeError("boom"))
+        )
+        monkeypatch.setattr(fm.shutil, "which", lambda _: "/usr/local/bin/ffmpeg")
+        assert fm.find_ffmpeg() == "/usr/local/bin/ffmpeg"
+
+    def test_nothing_found_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import imageio_ffmpeg
+
+        import vidfix.core.ffmpeg as fm
+        from vidfix.exceptions import FFmpegNotFoundError
+
+        monkeypatch.setattr(
+            imageio_ffmpeg, "get_ffmpeg_exe", lambda: (_ for _ in ()).throw(RuntimeError("boom"))
+        )
+        monkeypatch.setattr(fm.shutil, "which", lambda _: None)
+        with pytest.raises(FFmpegNotFoundError):
+            fm.find_ffmpeg()
+
+
+class TestProgressEventsSkipsUnparseable:
+    def test_junk_lines_ignored(self) -> None:
+        events = list(progress_events(["garbage", "out_time_us=1000000", "progress=end"]))
+        assert events[-1].done is True
+
+
+class TestRunFailure:
+    def test_nonzero_exit_raises_conversion_error(self, tmp_path: Path) -> None:
+        fake = tmp_path / "fake_ffmpeg"
+        fake.write_text("#!/bin/sh\necho boom >&2\nexit 3\n")
+        fake.chmod(0o755)
+        runner = FFmpegRunner(ffmpeg_path=str(fake))
+        with pytest.raises(ConversionError) as excinfo:
+            runner.run(["-i", "nope"])
+        assert "boom" in (excinfo.value.stderr or "")

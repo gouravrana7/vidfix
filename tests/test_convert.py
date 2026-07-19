@@ -137,3 +137,10 @@ class TestAudio:
             "in.mp4", "out.mp4", source(audio=False), audio_tone=True, layout="5.1"
         )
         assert p.args[p.args.index("-ac") + 1] == "6"
+
+
+class TestNoAudioStreamCopy:
+    def test_trim_copy_drops_audio(self) -> None:
+        p = build_convert_plan("in.mp4", "out.mp4", source(), duration=5.0, no_audio=True)
+        assert p.stream_copy
+        assert "-an" in p.args

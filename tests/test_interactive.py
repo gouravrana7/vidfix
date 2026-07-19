@@ -215,3 +215,9 @@ class TestOtherFlows:
     def test_wizard_dispatch(self, monkeypatch: pytest.MonkeyPatch, media_file: str) -> None:
         Script(monkeypatch, ["info", media_file])
         assert interactive.wizard() == ["info", media_file]
+
+
+class TestAskSpecRequired:
+    def test_blank_reprompts_when_not_optional(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        Script(monkeypatch, ["", "30"])
+        assert interactive.ask_spec("fps", interactive.parse_fps, optional=False) == "30"

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from vidfix.core.matrix import default_jobs, parse_list, plan_matrix
@@ -38,3 +40,23 @@ class TestPlanMatrix:
 
 def test_default_jobs_capped() -> None:
     assert 1 <= default_jobs() <= 4
+
+
+class TestRunMatrix:
+    def test_failure_and_on_result_callback(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        import vidfix.core.matrix as mx
+        from vidfix.exceptions import ConversionError
+
+        def boom(*args: object, **kwargs: object) -> None:
+            raise ConversionError("encode failed")
+
+        monkeypatch.setattr(mx, "convert", boom)
+        seen: list[mx.MatrixResult] = []
+        results = mx.run_matrix(
+            tmp_path / "in.mp4", tmp_path / "out", ["30"], ["720p"], on_result=seen.append
+        )
+        assert len(results) == 1 and results[0].ok is False
+        assert "encode failed" in (results[0].error or "")
+        assert seen == results
