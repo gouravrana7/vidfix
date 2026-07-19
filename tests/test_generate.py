@@ -106,6 +106,44 @@ class TestBuildGenerateArgs:
         args = build_generate_args("out.mp4", FPS30, 5.0, RES, timecode=True)
         assert any("drawtext" in a for a in args)
 
+    def test_layout_channel_count(self) -> None:
+        args = build_generate_args("out.mp4", FPS30, 5.0, RES, layout="5.1")
+        assert args[args.index("-ac") + 1] == "6"
+
+    def test_layout_pan_left(self) -> None:
+        args = build_generate_args("out.mp4", FPS30, 5.0, RES, layout="left")
+        assert args[args.index("-af") + 1] == "pan=stereo|FL=c0"
+
+    def test_bad_layout(self) -> None:
+        with pytest.raises(InvalidSpecError):
+            build_generate_args("out.mp4", FPS30, 5.0, RES, layout="quad")
+
+    def test_audio_only_output(self) -> None:
+        args = build_generate_args("tone.wav", FPS30, 5.0, RES, layout="right")
+        joined = " ".join(args)
+        assert "smptebars" not in joined and "-vf" not in args
+        assert "sine=frequency=440" in joined
+        assert args[args.index("-af") + 1] == "pan=stereo|FR=c0"
+
+    def test_audio_only_rejects_audio_none(self) -> None:
+        with pytest.raises(InvalidSpecError):
+            build_generate_args("tone.wav", FPS30, 5.0, RES, audio="none")
+
+    def test_audio_only_rejects_timecode(self) -> None:
+        with pytest.raises(InvalidSpecError):
+            build_generate_args("tone.wav", FPS30, 5.0, RES, timecode=True)
+
+    def test_image_output(self) -> None:
+        args = build_generate_args("card.jpg", FPS30, 5.0, RES)
+        assert args[args.index("-frames:v") + 1] == "1"
+        assert args[args.index("-q:v") + 1] == "2"
+        assert "-an" in args and "-c:v" not in args and "-t" not in args
+        assert "sine=" not in " ".join(args)
+
+    def test_image_rejects_timecode(self) -> None:
+        with pytest.raises(InvalidSpecError):
+            build_generate_args("card.png", FPS30, 5.0, RES, timecode=True)
+
     def test_bad_audio_mode(self) -> None:
         with pytest.raises(InvalidSpecError):
             build_generate_args("out.mp4", FPS30, 5.0, RES, audio="loud")

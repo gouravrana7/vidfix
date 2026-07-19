@@ -16,12 +16,16 @@ from rich.console import Console
 from rich.prompt import Confirm, Prompt
 
 from vidfix.core.duration import parse_duration, parse_fps, parse_resolution
+from vidfix.core.formats import IMAGE_EXTS
+from vidfix.core.generate import AUDIO_EXTENSIONS
 from vidfix.core.presets import load_presets
 from vidfix.exceptions import VidfixError
 
 console = Console()
 
 ACTIONS = ("convert", "generate", "caption", "format", "verify", "info", "variants")
+
+AUDIO_CHANNEL_CHOICES = ["mono", "stereo", "5.1", "7.1", "left", "right"]
 
 
 def ask_spec(
@@ -57,8 +61,11 @@ def ask_output(default: str) -> str:
 
 
 def ask_preset() -> str | None:
-    names = sorted(load_presets())
-    choice = Prompt.ask("Preset", choices=["none", *names], default="none")
+    presets = load_presets()
+    for name in sorted(presets):
+        hint = presets[name].get("description") or f"same as {presets[name].get('alias')}"
+        console.print(f"  [cyan]{name:16}[/cyan][dim]{hint}[/dim]")
+    choice = Prompt.ask("Preset", choices=["none", *sorted(presets)], default="none")
     return None if choice == "none" else choice
 
 
@@ -70,7 +77,7 @@ def convert_flow() -> list[str]:
     source = ask_file("Which file do you want to convert?")
     preset = ask_preset()
     fps = ask_spec("Target fps (e.g. 30, 59.94)", parse_fps)
-    duration = ask_spec("Target duration (e.g. 30s, 1:30)", parse_duration)
+    duration = ask_spec("Target duration (e.g. 30s, 1min, 1:30)", parse_duration)
     res = ask_spec("Target resolution (e.g. 720p, 1280x720)", parse_resolution)
     # A chosen preset must win: only send flags the user actually typed.
     codec = (
@@ -78,32 +85,82 @@ def convert_flow() -> list[str]:
         if preset
         else Prompt.ask("Codec", choices=["h264", "h265", "prores", "vp9"], default="h264")
     )
+    layout = Prompt.ask("Audio channels", choices=["keep", *AUDIO_CHANNEL_CHOICES], default="keep")
     output = ask_output(str(Path(source).with_stem(Path(source).stem + "_converted")))
     return [
         "convert", source,
         *_opt("--preset", preset), *_opt("--fps", fps), *_opt("--duration", duration),
-        *_opt("--res", res), *_opt("--codec", codec), "-o", output,
+        *_opt("--res", res), *_opt("--codec", codec),
+        *_opt("--audio-layout", None if layout == "keep" else layout), "-o", output,
+    ]  # fmt: skip
+
+
+def ask_output_ext(default: str, allowed: set[str], kind: str) -> str:
+    """Prompt for an output file until its extension fits the generated media kind."""
+    while True:
+        output = ask_output(default)
+        if Path(output).suffix.lower() in allowed:
+            return output
+        console.print(f"[red]{kind} output needs one of: {', '.join(sorted(allowed))}[/red]")
+
+
+PATTERN_CHOICES = ["smpte", "color-bars", "testsrc", "gradient", "solid:red"]
+
+
+def audio_flow() -> list[str]:
+    audio = Prompt.ask("Audio", choices=["tone", "silence"], default="tone")
+    layout = Prompt.ask("Audio channels", choices=AUDIO_CHANNEL_CHOICES, default="stereo")
+    duration = ask_spec("Duration (e.g. 30s, 1min, 1:30)", parse_duration, default="5s")
+    output = ask_output_ext("test.wav", set(AUDIO_EXTENSIONS), "Audio-only")
+    return [
+        "generate", *_opt("--audio", None if audio == "tone" else audio),
+        *_opt("--audio-layout", layout), *_opt("--duration", duration), "-o", output,
+    ]  # fmt: skip
+
+
+def picture_flow() -> list[str]:
+    pattern = Prompt.ask("Pattern", choices=PATTERN_CHOICES, default="smpte")
+    res = ask_spec("Resolution (e.g. 720p, 1080p, 1280x720)", parse_resolution, default="720p")
+    text = Prompt.ask("Caption text [dim](enter to skip)[/dim]", default="").strip()
+    output = ask_output_ext("test.png", IMAGE_EXTS, "Picture")
+    return [
+        "generate", "--pattern", pattern,
+        *_opt("--res", res), *_opt("--text", text or None), "-o", output,
     ]  # fmt: skip
 
 
 def generate_flow() -> list[str]:
-    pattern = Prompt.ask(
-        "Pattern",
-        choices=["smpte", "color-bars", "testsrc", "gradient", "solid:red"],
-        default="smpte",
-    )
+    kind = Prompt.ask("Generate", choices=["video", "audio-only", "picture"], default="video")
+    if kind == "audio-only":
+        return audio_flow()
+    if kind == "picture":
+        return picture_flow()
+    pattern = Prompt.ask("Pattern", choices=PATTERN_CHOICES, default="smpte")
     preset = ask_preset()
     # A chosen preset must win: defaults would be sent as explicit flags and
     # override it, so blank-to-skip when a preset is picked.
-    fps = ask_spec("fps", parse_fps, default="" if preset else "30")
-    duration = ask_spec("Duration", parse_duration, default="" if preset else "5s")
-    res = ask_spec("Resolution", parse_resolution, default="" if preset else "720p")
+    fps = ask_spec("fps (e.g. 30, 29.97, 60)", parse_fps, default="" if preset else "30")
+    duration = ask_spec(
+        "Duration (e.g. 30s, 1min, 1:30)", parse_duration, default="" if preset else "5s"
+    )
+    res = ask_spec(
+        "Resolution (e.g. 720p, 1080p, 1280x720)",
+        parse_resolution,
+        default="" if preset else "720p",
+    )
+    audio = Prompt.ask("Audio", choices=["tone", "silence", "none"], default="tone")
+    layout = (
+        None
+        if audio == "none"
+        else Prompt.ask("Audio channels", choices=AUDIO_CHANNEL_CHOICES, default="stereo")
+    )
     text = Prompt.ask("Caption text [dim](enter to skip)[/dim]", default="").strip()
     timecode = Confirm.ask("Burn in frame counter/timestamp?", default=False)
     output = ask_output("test.mp4")
     return [
         "generate", "--pattern", pattern,
         *_opt("--preset", preset), *_opt("--fps", fps), *_opt("--duration", duration),
+        *_opt("--audio", None if audio == "tone" else audio), *_opt("--audio-layout", layout),
         *_opt("--res", res), *_opt("--text", text or None),
         *(["--timecode"] if timecode else []), "-o", output,
     ]  # fmt: skip

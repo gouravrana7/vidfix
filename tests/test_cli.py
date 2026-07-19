@@ -55,15 +55,54 @@ def fake_probe(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(cli.probe_mod, "probe", lambda _: INFO)
 
 
+def passing_verify(monkeypatch: pytest.MonkeyPatch) -> Recorder:
+    """Stub the post-generate auto-verify with an all-green result."""
+    check = PropertyCheck(name="fps", expected="30.000", actual="30.000", passed=True)
+    rec = Recorder(VerifyResult(path="out", passed=True, checks=[check]))
+    monkeypatch.setattr(cli.verify_mod, "verify", rec)
+    return rec
+
+
 class TestGenerateCli:
     def test_defaults(self, monkeypatch: pytest.MonkeyPatch) -> None:
         rec = Recorder()
         monkeypatch.setattr(cli.generate_mod, "generate", rec)
+        passing_verify(monkeypatch)
         result = runner.invoke(cli.app, ["generate", "-o", "out.mp4"])
         assert result.exit_code == 0
         assert "wrote out.mp4" in result.output
+        assert "verified" in result.output and "PASS" in result.output
         assert rec.kwargs["fps"] == "30"
         assert rec.kwargs["drop_frame"] is None
+
+    def test_auto_verify_checks_requested_specs(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(cli.generate_mod, "generate", Recorder())
+        ver = passing_verify(monkeypatch)
+        runner.invoke(cli.app, ["generate", "-o", "out.mp4", "--fps", "60", "--res", "720p"])
+        assert float(ver.kwargs["fps"]) == 60
+        assert str(ver.kwargs["res"]) == "1280x720"
+        assert ver.kwargs["codec"] == "h264"
+
+    def test_auto_verify_audio_only_checks_duration_only(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(cli.generate_mod, "generate", Recorder())
+        ver = passing_verify(monkeypatch)
+        runner.invoke(cli.app, ["generate", "-o", "tone.wav", "--duration", "3s"])
+        assert ver.kwargs == {"duration": 3.0}
+
+    def test_auto_verify_failure_exits_1(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(cli.generate_mod, "generate", Recorder())
+        check = PropertyCheck(name="fps", expected="60", actual="30", passed=False)
+        monkeypatch.setattr(
+            cli.verify_mod,
+            "verify",
+            Recorder(VerifyResult(path="out.mp4", passed=False, checks=[check])),
+        )
+        result = runner.invoke(cli.app, ["generate", "-o", "out.mp4"])
+        assert result.exit_code == 1
+        assert "FAIL" in result.output
+        assert "does not match" in combined_output(result)
 
     @pytest.mark.parametrize(
         ("preset", "fps", "drop_frame"),
@@ -80,6 +119,7 @@ class TestGenerateCli:
     ) -> None:
         rec = Recorder()
         monkeypatch.setattr(cli.generate_mod, "generate", rec)
+        passing_verify(monkeypatch)
         result = runner.invoke(cli.app, ["generate", "-o", "o.mp4", "--preset", preset])
         assert result.exit_code == 0
         assert rec.kwargs["fps"] == fps
@@ -181,8 +221,30 @@ class TestInfoCli:
     def test_table(self, fake_probe: None) -> None:
         result = runner.invoke(cli.app, ["info", "in.mp4"])
         assert result.exit_code == 0
-        for expected in ("mp4", "160x120", "h264", "aac"):
+        for expected in ("type", "mp4 video", "1.00 seconds", "160x120", "h264"):
             assert expected in result.output
+        assert "stereo (left+right)" in result.output
+        assert "normal quality (44100 Hz)" in result.output
+        assert "container" not in result.output
+        assert "2ch" not in result.output
+
+    def test_table_friendly_long_duration_and_layout(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        info = INFO.model_copy(
+            update={
+                "duration": 90.0,
+                "width": 1280,
+                "height": 720,
+                "pix_fmt": "yuv420p",
+                "audio": AudioInfo(codec="aac", sample_rate=48000, channels=6),
+            }
+        )
+        monkeypatch.setattr(cli.probe_mod, "probe", lambda _: info)
+        result = runner.invoke(cli.app, ["info", "in.mp4"])
+        assert "1m 30s (90.00 seconds)" in result.output
+        assert "720p (1280x720)" in result.output
+        assert "standard (yuv420p)" in result.output
+        assert "normal quality (48000 Hz)" in result.output
+        assert "5.1 surround" in result.output
 
     def test_json(self, fake_probe: None) -> None:
         result = runner.invoke(cli.app, ["info", "in.mp4", "--json"])

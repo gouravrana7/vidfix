@@ -62,9 +62,17 @@ class TestParseFfprobeJson:
         assert info.audio.sample_rate == 44100
         assert info.audio.channels == 2
 
-    def test_no_video_stream(self) -> None:
-        with pytest.raises(ProbeError, match="No video stream"):
+    def test_no_streams(self) -> None:
+        with pytest.raises(ProbeError, match="No media streams"):
             parse_ffprobe_json('{"streams": [], "format": {}}', "audio.mp3")
+
+    def test_audio_only(self) -> None:
+        payload = FFPROBE_JSON.replace('"codec_type": "video"', '"codec_type": "data"')
+        info = parse_ffprobe_json(payload, "tone.wav")
+        assert info.video_codec == "none"
+        assert (info.width, info.height, info.fps) == (0, 0, "0")
+        assert info.audio is not None and info.audio.channels == 2
+        assert info.duration == pytest.approx(30.03)
 
     def test_invalid_json(self) -> None:
         with pytest.raises(ProbeError, match="invalid JSON"):
@@ -98,12 +106,30 @@ class TestParseFfmpegBanner:
         info = parse_ffmpeg_banner(banner, "clip.mp4")
         assert info.audio is None
 
+    def test_audio_only(self) -> None:
+        banner = "\n".join(line for line in FFMPEG_BANNER.splitlines() if "Video" not in line)
+        info = parse_ffmpeg_banner(banner, "tone.wav")
+        assert info.video_codec == "none"
+        assert info.audio is not None and info.audio.codec == "aac"
+
     def test_pix_fmt_qualifier_with_comma(self) -> None:
         # ffmpeg writes e.g. "yuv420p(tv, progressive)" — comma inside parens
         banner = FFMPEG_BANNER.replace("yuv420p(progressive)", "yuv420p(tv, progressive)")
         info = parse_ffmpeg_banner(banner, "clip.mp4")
         assert info.pix_fmt == "yuv420p"
         assert info.width == 1280
+
+    def test_still_image_has_no_duration(self) -> None:
+        banner = (
+            "Input #0, png_pipe, from 'card.png':\n"
+            "  Duration: N/A, bitrate: N/A\n"
+            "  Stream #0:0: Video: png, rgb24(pc), 320x240 [SAR 1:1 DAR 4:3], 25 fps, 25 tbr\n"
+            "At least one output file must be specified\n"
+        )
+        info = parse_ffmpeg_banner(banner, "card.png")
+        assert info.duration == 0.0
+        assert (info.width, info.height) == (320, 240)
+        assert info.video_codec == "png"
 
     def test_garbage_input(self) -> None:
         with pytest.raises(ProbeError, match="not a recognizable media file"):
