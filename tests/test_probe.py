@@ -265,10 +265,12 @@ class TestCoercionHelpers:
         assert _first_int("abc") is None
 
 
-class TestProbeViaFfprobeScript:
-    def test_ffprobe_json_path(self, tmp_path: Path) -> None:
+class TestProbeViaFfprobe:
+    def test_ffprobe_json_path(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         import json
+        import subprocess
 
+        import vidfix.core.probe as pm
         from vidfix.core.ffmpeg import FFmpegRunner
         from vidfix.core.probe import probe
 
@@ -293,10 +295,12 @@ class TestProbeViaFfprobeScript:
                 ],
             }
         )
-        fake = tmp_path / "ffprobe"
-        fake.write_text(f"#!/bin/sh\ncat <<'JSON'\n{payload}\nJSON\n")
-        fake.chmod(0o755)
-        runner = FFmpegRunner(ffmpeg_path="/bin/true", ffprobe_path=str(fake))
+
+        def fake_run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+            return subprocess.CompletedProcess(cmd, returncode=0, stdout=payload, stderr="")
+
+        monkeypatch.setattr(pm.subprocess, "run", fake_run)
+        runner = FFmpegRunner(ffmpeg_path="/fake/ffmpeg", ffprobe_path="/fake/ffprobe")
         info = probe(media, runner=runner)
         assert info.container == "mp4"
         assert info.fps == "30"

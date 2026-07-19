@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 
 from vidfix.core.ffmpeg import (
@@ -146,11 +144,16 @@ class TestProgressEventsSkipsUnparseable:
 
 
 class TestRunFailure:
-    def test_nonzero_exit_raises_conversion_error(self, tmp_path: Path) -> None:
-        fake = tmp_path / "fake_ffmpeg"
-        fake.write_text("#!/bin/sh\necho boom >&2\nexit 3\n")
-        fake.chmod(0o755)
-        runner = FFmpegRunner(ffmpeg_path=str(fake))
+    def test_nonzero_exit_raises_conversion_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import subprocess
+
+        import vidfix.core.ffmpeg as fm
+
+        def fake_run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+            return subprocess.CompletedProcess(cmd, returncode=3, stdout="", stderr="boom")
+
+        monkeypatch.setattr(fm.subprocess, "run", fake_run)
+        runner = FFmpegRunner(ffmpeg_path="/fake/ffmpeg")
         with pytest.raises(ConversionError) as excinfo:
             runner.run(["-i", "nope"])
         assert "boom" in (excinfo.value.stderr or "")
