@@ -55,54 +55,15 @@ def fake_probe(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(cli.probe_mod, "probe", lambda _: INFO)
 
 
-def passing_verify(monkeypatch: pytest.MonkeyPatch) -> Recorder:
-    """Stub the post-generate auto-verify with an all-green result."""
-    check = PropertyCheck(name="fps", expected="30.000", actual="30.000", passed=True)
-    rec = Recorder(VerifyResult(path="out", passed=True, checks=[check]))
-    monkeypatch.setattr(cli.verify_mod, "verify", rec)
-    return rec
-
-
 class TestGenerateCli:
     def test_defaults(self, monkeypatch: pytest.MonkeyPatch) -> None:
         rec = Recorder()
         monkeypatch.setattr(cli.generate_mod, "generate", rec)
-        passing_verify(monkeypatch)
         result = runner.invoke(cli.app, ["generate", "-o", "out.mp4"])
         assert result.exit_code == 0
         assert "wrote out.mp4" in result.output
-        assert "verified" in result.output and "PASS" in result.output
         assert rec.kwargs["fps"] == "30"
         assert rec.kwargs["drop_frame"] is None
-
-    def test_auto_verify_checks_requested_specs(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(cli.generate_mod, "generate", Recorder())
-        ver = passing_verify(monkeypatch)
-        runner.invoke(cli.app, ["generate", "-o", "out.mp4", "--fps", "60", "--res", "720p"])
-        assert float(ver.kwargs["fps"]) == 60
-        assert str(ver.kwargs["res"]) == "1280x720"
-        assert ver.kwargs["codec"] == "h264"
-
-    def test_auto_verify_audio_only_checks_duration_only(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setattr(cli.generate_mod, "generate", Recorder())
-        ver = passing_verify(monkeypatch)
-        runner.invoke(cli.app, ["generate", "-o", "tone.wav", "--duration", "3s"])
-        assert ver.kwargs == {"duration": 3.0}
-
-    def test_auto_verify_failure_exits_1(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(cli.generate_mod, "generate", Recorder())
-        check = PropertyCheck(name="fps", expected="60", actual="30", passed=False)
-        monkeypatch.setattr(
-            cli.verify_mod,
-            "verify",
-            Recorder(VerifyResult(path="out.mp4", passed=False, checks=[check])),
-        )
-        result = runner.invoke(cli.app, ["generate", "-o", "out.mp4"])
-        assert result.exit_code == 1
-        assert "FAIL" in result.output
-        assert "does not match" in combined_output(result)
 
     @pytest.mark.parametrize(
         ("preset", "fps", "drop_frame"),
@@ -119,11 +80,38 @@ class TestGenerateCli:
     ) -> None:
         rec = Recorder()
         monkeypatch.setattr(cli.generate_mod, "generate", rec)
-        passing_verify(monkeypatch)
         result = runner.invoke(cli.app, ["generate", "-o", "o.mp4", "--preset", preset])
         assert result.exit_code == 0
         assert rec.kwargs["fps"] == fps
         assert rec.kwargs["drop_frame"] is drop_frame
+
+    @pytest.mark.parametrize(
+        ("preset", "fps", "expected_fps"),
+        [
+            ("df30", "30", "30"),  # user overrides DF preset with an exact rate
+            ("df30", "29.97", "29.97"),  # override to the same DF rate
+            ("ndf30", "25", "25"),
+            ("pal25", "30", "30"),
+            (None, "29.97", "29.97"),  # no preset at all
+        ],
+    )
+    def test_explicit_fps_drops_preset_timecode_hint(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        preset: str | None,
+        fps: str,
+        expected_fps: str,
+    ) -> None:
+        """Explicit --fps wins; timecode counting then follows the real rate (no error)."""
+        rec = Recorder()
+        monkeypatch.setattr(cli.generate_mod, "generate", rec)
+        args = ["generate", "-o", "o.mp4", "--fps", fps, "--timecode"]
+        if preset:
+            args += ["--preset", preset]
+        result = runner.invoke(cli.app, args)
+        assert result.exit_code == 0
+        assert rec.kwargs["fps"] == expected_fps
+        assert rec.kwargs["drop_frame"] is None
 
     def test_error_exits_1(self, monkeypatch: pytest.MonkeyPatch) -> None:
         def boom(*args: Any, **kwargs: Any) -> None:

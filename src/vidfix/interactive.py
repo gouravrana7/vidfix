@@ -15,10 +15,10 @@ from pathlib import Path
 from rich.console import Console
 from rich.prompt import Confirm, Prompt
 
-from vidfix.core.duration import parse_duration, parse_fps, parse_resolution
+from vidfix.core.duration import DROP_FRAME_RATES, parse_duration, parse_fps, parse_resolution
 from vidfix.core.formats import IMAGE_EXTS
 from vidfix.core.generate import AUDIO_EXTENSIONS
-from vidfix.core.presets import load_presets
+from vidfix.core.presets import get_preset, load_presets
 from vidfix.exceptions import VidfixError
 
 console = Console()
@@ -28,13 +28,29 @@ ACTIONS = ("convert", "generate", "caption", "format", "verify", "info", "varian
 AUDIO_CHANNEL_CHOICES = ["mono", "stereo", "5.1", "7.1", "left", "right"]
 
 
+def _pretty_fps(value: str) -> str:
+    """Rationals get their everyday name: 30000/1001 -> 29.97."""
+    names = {str(v): k for k, v in DROP_FRAME_RATES.items()}
+    return names.get(value, value)
+
+
 def ask_spec(
-    label: str, parser: Callable[[str], object], default: str = "", optional: bool = True
+    label: str,
+    parser: Callable[[str], object],
+    default: str = "",
+    optional: bool = True,
+    preset_value: str | None = None,
+    skip_hint: str = "enter to skip",
 ) -> str | None:
     """Prompt until the answer parses (or is left blank when optional)."""
-    hint = " [dim](enter to skip)[/dim]" if optional and not default else ""
+    if preset_value:
+        hint = f" [dim](preset: {preset_value} — enter to keep, type to override)[/dim]"
+    elif optional and not default:
+        hint = f" [dim]({skip_hint})[/dim]"
+    else:
+        hint = ""
     while True:
-        raw = Prompt.ask(f"{label}{hint}", default=default).strip()
+        raw = Prompt.ask(f"{label}{hint}", default=default, show_default=bool(default)).strip()
         if not raw:
             if optional:
                 return None
@@ -76,9 +92,25 @@ def _opt(flag: str, value: str | None) -> list[str]:
 def convert_flow() -> list[str]:
     source = ask_file("Which file do you want to convert?")
     preset = ask_preset()
-    fps = ask_spec("Target fps (e.g. 30, 59.94)", parse_fps)
-    duration = ask_spec("Target duration (e.g. 30s, 1min, 1:30)", parse_duration)
-    res = ask_spec("Target resolution (e.g. 720p, 1280x720)", parse_resolution)
+    pd = get_preset(preset) if preset else {}
+    fps = ask_spec(
+        "Target fps (e.g. 30, 59.94)",
+        parse_fps,
+        preset_value=_pretty_fps(str(pd["fps"])) if "fps" in pd else None,
+        skip_hint="enter = keep source",
+    )
+    duration = ask_spec(
+        "Target duration (e.g. 30s, 1min, 1:30)",
+        parse_duration,
+        preset_value=str(pd.get("duration") or "") or None,
+        skip_hint="enter = keep source",
+    )
+    res = ask_spec(
+        "Target resolution (e.g. 720p, 1280x720)",
+        parse_resolution,
+        preset_value=str(pd.get("res") or "") or None,
+        skip_hint="enter = keep source",
+    )
     # A chosen preset must win: only send flags the user actually typed.
     codec = (
         None
@@ -121,7 +153,9 @@ def audio_flow() -> list[str]:
 def picture_flow() -> list[str]:
     pattern = Prompt.ask("Pattern", choices=PATTERN_CHOICES, default="smpte")
     res = ask_spec("Resolution (e.g. 720p, 1080p, 1280x720)", parse_resolution, default="720p")
-    text = Prompt.ask("Caption text [dim](enter to skip)[/dim]", default="").strip()
+    text = Prompt.ask(
+        "Caption text [dim](enter to skip)[/dim]", default="", show_default=False
+    ).strip()
     output = ask_output_ext("test.png", IMAGE_EXTS, "Picture")
     return [
         "generate", "--pattern", pattern,
@@ -138,15 +172,28 @@ def generate_flow() -> list[str]:
     pattern = Prompt.ask("Pattern", choices=PATTERN_CHOICES, default="smpte")
     preset = ask_preset()
     # A chosen preset must win: defaults would be sent as explicit flags and
-    # override it, so blank-to-skip when a preset is picked.
-    fps = ask_spec("fps (e.g. 30, 29.97, 60)", parse_fps, default="" if preset else "30")
+    # override it, so blank-to-skip when a preset is picked — and the hint
+    # names the preset's value so typing an override is a conscious choice.
+    pd = get_preset(preset) if preset else {}
+    # Fields the preset sets stay blank (preset wins; hint names its value);
+    # fields it does not set keep their normal visible defaults.
+    fps = ask_spec(
+        "fps (e.g. 30, 29.97, 60)",
+        parse_fps,
+        default="" if "fps" in pd else "30",
+        preset_value=_pretty_fps(str(pd["fps"])) if "fps" in pd else None,
+    )
     duration = ask_spec(
-        "Duration (e.g. 30s, 1min, 1:30)", parse_duration, default="" if preset else "5s"
+        "Duration (e.g. 30s, 1min, 1:30)",
+        parse_duration,
+        default="" if "duration" in pd else "5s",
+        preset_value=str(pd.get("duration") or "") or None,
     )
     res = ask_spec(
         "Resolution (e.g. 720p, 1080p, 1280x720)",
         parse_resolution,
-        default="" if preset else "720p",
+        default="" if "res" in pd else "720p",
+        preset_value=str(pd.get("res") or "") or None,
     )
     audio = Prompt.ask("Audio", choices=["tone", "silence", "none"], default="tone")
     layout = (
@@ -154,7 +201,9 @@ def generate_flow() -> list[str]:
         if audio == "none"
         else Prompt.ask("Audio channels", choices=AUDIO_CHANNEL_CHOICES, default="stereo")
     )
-    text = Prompt.ask("Caption text [dim](enter to skip)[/dim]", default="").strip()
+    text = Prompt.ask(
+        "Caption text [dim](enter to skip)[/dim]", default="", show_default=False
+    ).strip()
     timecode = Confirm.ask("Burn in frame counter/timestamp?", default=False)
     output = ask_output("test.mp4")
     return [
