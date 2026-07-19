@@ -30,6 +30,24 @@ def media_file(tmp_path: Path) -> str:
     return str(path)
 
 
+class TestAskSpec:
+    """Blank defaults must not render as an empty '()' after the label."""
+
+    @pytest.mark.parametrize(("default", "shown"), [("", False), ("30", True)])
+    def test_show_default_only_when_set(
+        self, monkeypatch: pytest.MonkeyPatch, default: str, shown: bool
+    ) -> None:
+        seen: dict[str, object] = {}
+
+        def fake_ask(*args: object, **kwargs: object) -> str:
+            seen.update(kwargs)
+            return "25"
+
+        monkeypatch.setattr(interactive.Prompt, "ask", staticmethod(fake_ask))
+        interactive.ask_spec("fps", interactive.parse_fps, default=default)
+        assert seen["show_default"] is shown
+
+
 class TestConvertFlow:
     def test_full_answers(self, monkeypatch: pytest.MonkeyPatch, media_file: str) -> None:
         Script(monkeypatch, [media_file, "df60", "", "30s", "720p", "5.1", "out.mp4"])

@@ -5,12 +5,12 @@
 [![Python](https://img.shields.io/pypi/pyversions/vidfix?cacheSeconds=300)](https://pypi.org/project/vidfix/)
 [![License](https://img.shields.io/badge/License-PolyForm_Internal_Use-blue.svg)](LICENSE)
 
-**There's nothing else like vidfix.** A CLI-first media toolkit that creates
-any video, picture, or audio from nothing, converts anything to any format,
-and fixes existing files to exact specs (fps, duration, resolution, audio
-channels) — then checks its own work: every file it creates is verified
-against what you asked for before it says done. Built for anyone —
-developers, testers, creators, or someone who just wants a file converted.
+**vidfix** is a CLI-first media toolkit that creates any video, picture, or
+audio from nothing, converts anything to any format, and fixes existing files
+to exact specs (fps, duration, resolution, audio channels) — then checks its
+own work: every file it creates is verified against what you asked for before
+it says done. Built for anyone — developers, testers, creators, or someone
+who just wants a file converted.
 
 ## No commands to learn. It talks to you.
 

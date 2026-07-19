@@ -125,6 +125,35 @@ class TestGenerateCli:
         assert rec.kwargs["fps"] == fps
         assert rec.kwargs["drop_frame"] is drop_frame
 
+    @pytest.mark.parametrize(
+        ("preset", "fps", "expected_fps"),
+        [
+            ("df30", "30", "30"),  # user overrides DF preset with an exact rate
+            ("df30", "29.97", "29.97"),  # override to the same DF rate
+            ("ndf30", "25", "25"),
+            ("pal25", "30", "30"),
+            (None, "29.97", "29.97"),  # no preset at all
+        ],
+    )
+    def test_explicit_fps_drops_preset_timecode_hint(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        preset: str | None,
+        fps: str,
+        expected_fps: str,
+    ) -> None:
+        """Explicit --fps wins; timecode counting then follows the real rate (no error)."""
+        rec = Recorder()
+        monkeypatch.setattr(cli.generate_mod, "generate", rec)
+        passing_verify(monkeypatch)
+        args = ["generate", "-o", "o.mp4", "--fps", fps, "--timecode"]
+        if preset:
+            args += ["--preset", preset]
+        result = runner.invoke(cli.app, args)
+        assert result.exit_code == 0
+        assert rec.kwargs["fps"] == expected_fps
+        assert rec.kwargs["drop_frame"] is None
+
     def test_error_exits_1(self, monkeypatch: pytest.MonkeyPatch) -> None:
         def boom(*args: Any, **kwargs: Any) -> None:
             raise ConversionError("ffmpeg exploded")

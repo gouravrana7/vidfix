@@ -184,6 +184,10 @@ def generate(
         merged = presets_mod.apply_preset(preset, fps=fps, duration=duration, res=res, codec=codec)
         total = parse_duration(merged.get("duration") or "5s")
         drop_frame = {"df": True, "ndf": False}.get(merged.get("timecode") or "")
+        if fps is not None:
+            # Explicit --fps beats the preset, so its df/ndf counting hint no
+            # longer applies; let the timecode follow the real rate instead.
+            drop_frame = None
         with _ProgressBar(f"generate {output.name}", total) as on_progress:
             generate_mod.generate(
                 output,

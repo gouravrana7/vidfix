@@ -37,6 +37,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `normal quality (44100 Hz)` / `high quality` / `low quality`
   (`--json` output unchanged).
 
+### Fixed
+
+- Wizard prompts with no default no longer show an empty `()` after the label.
+- Explicit `--fps` alongside a drop-frame preset (e.g. `--preset df30 --fps 30
+  --timecode`) no longer errors; the timecode counting follows the actual rate.
+
 ## [0.1.2] - 2026-07-18
 
 ### Changed

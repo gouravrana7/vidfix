@@ -34,7 +34,7 @@ def ask_spec(
     """Prompt until the answer parses (or is left blank when optional)."""
     hint = " [dim](enter to skip)[/dim]" if optional and not default else ""
     while True:
-        raw = Prompt.ask(f"{label}{hint}", default=default).strip()
+        raw = Prompt.ask(f"{label}{hint}", default=default, show_default=bool(default)).strip()
         if not raw:
             if optional:
                 return None
@@ -121,7 +121,9 @@ def audio_flow() -> list[str]:
 def picture_flow() -> list[str]:
     pattern = Prompt.ask("Pattern", choices=PATTERN_CHOICES, default="smpte")
     res = ask_spec("Resolution (e.g. 720p, 1080p, 1280x720)", parse_resolution, default="720p")
-    text = Prompt.ask("Caption text [dim](enter to skip)[/dim]", default="").strip()
+    text = Prompt.ask(
+        "Caption text [dim](enter to skip)[/dim]", default="", show_default=False
+    ).strip()
     output = ask_output_ext("test.png", IMAGE_EXTS, "Picture")
     return [
         "generate", "--pattern", pattern,
@@ -154,7 +156,9 @@ def generate_flow() -> list[str]:
         if audio == "none"
         else Prompt.ask("Audio channels", choices=AUDIO_CHANNEL_CHOICES, default="stereo")
     )
-    text = Prompt.ask("Caption text [dim](enter to skip)[/dim]", default="").strip()
+    text = Prompt.ask(
+        "Caption text [dim](enter to skip)[/dim]", default="", show_default=False
+    ).strip()
     timecode = Confirm.ask("Burn in frame counter/timestamp?", default=False)
     output = ask_output("test.mp4")
     return [
