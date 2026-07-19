@@ -122,6 +122,33 @@ class TestGenerateCli:
         assert result.exit_code == 1
         assert "ffmpeg exploded" in combined_output(result)
 
+    def test_all_options_reach_core(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        rec = Recorder()
+        monkeypatch.setattr(cli.generate_mod, "generate", rec)
+        result = runner.invoke(
+            cli.app,
+            ["generate", "-o", "o.mp4", "--pattern", "testsrc", "--codec", "h265",
+             "--audio", "silence", "--audio-layout", "5.1", "--timecode", "--text", "Take 1"],
+        )  # fmt: skip
+        assert result.exit_code == 0
+        assert rec.kwargs["pattern"] == "testsrc"
+        assert rec.kwargs["codec"] == "h265"
+        assert rec.kwargs["audio"] == "silence"
+        assert rec.kwargs["layout"] == "5.1"
+        assert rec.kwargs["timecode"] is True
+        assert rec.kwargs["text"] == "Take 1"
+
+    @pytest.mark.parametrize("output", ["tone.wav", "card.png"])
+    def test_audio_only_and_picture_outputs(
+        self, monkeypatch: pytest.MonkeyPatch, output: str
+    ) -> None:
+        rec = Recorder()
+        monkeypatch.setattr(cli.generate_mod, "generate", rec)
+        result = runner.invoke(cli.app, ["generate", "-o", output])
+        assert result.exit_code == 0
+        assert f"wrote {output}" in result.output
+        assert rec.args[0] == Path(output)
+
 
 class TestConvertCli:
     def test_stream_copy(self, monkeypatch: pytest.MonkeyPatch, fake_probe: None) -> None:
@@ -140,6 +167,37 @@ class TestConvertCli:
         assert result.exit_code == 0
         assert "re-encode" in result.output
         assert rec.kwargs["fps"] == "60"
+
+    def test_all_options_reach_core(
+        self, monkeypatch: pytest.MonkeyPatch, fake_probe: None
+    ) -> None:
+        rec = Recorder(ConvertPlan(args=[], stream_copy=False))
+        monkeypatch.setattr(cli.convert_mod, "convert", rec)
+        result = runner.invoke(
+            cli.app,
+            ["convert", "in.mp4", "-o", "out.mp4", "--fps", "60", "--duration", "10s",
+             "--res", "720p", "--codec", "h265", "--smooth", "--extend-mode", "loop",
+             "--stretch", "--audio-tone", "--audio-layout", "mono", "--precise"],
+        )  # fmt: skip
+        assert result.exit_code == 0
+        assert rec.kwargs["duration"] == "10s"
+        assert rec.kwargs["res"] == "720p"
+        assert rec.kwargs["codec"] == "h265"
+        assert rec.kwargs["smooth"] is True
+        assert rec.kwargs["extend_mode"] == "loop"
+        assert rec.kwargs["stretch"] is True
+        assert rec.kwargs["audio_tone"] is True
+        assert rec.kwargs["layout"] == "mono"
+        assert rec.kwargs["precise"] is True
+
+    def test_error_exits_1(self, monkeypatch: pytest.MonkeyPatch, fake_probe: None) -> None:
+        def boom(*args: Any, **kwargs: Any) -> None:
+            raise ConversionError("bad input")
+
+        monkeypatch.setattr(cli.convert_mod, "convert", boom)
+        result = runner.invoke(cli.app, ["convert", "in.mp4", "-o", "out.mp4"])
+        assert result.exit_code == 1
+        assert "bad input" in combined_output(result)
 
 
 class TestCaptionCli:
@@ -173,6 +231,15 @@ class TestFormatCli:
         result = runner.invoke(cli.app, ["format", "clip.mov", "-o", "clip.mp4"])
         assert result.exit_code == 0
         assert "wrote clip.mp4" in result.output
+
+    def test_error_exits_1(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        def boom(*args: Any, **kwargs: Any) -> None:
+            raise ConversionError("unsupported format")
+
+        monkeypatch.setattr(cli.formats_mod, "to_format", boom)
+        result = runner.invoke(cli.app, ["format", "photo.png", "-o", "photo.xyz"])
+        assert result.exit_code == 1
+        assert "unsupported format" in combined_output(result)
 
 
 class TestVerifyCli:
@@ -239,6 +306,15 @@ class TestInfoCli:
         assert result.exit_code == 0
         assert '"container"' in result.output
 
+    def test_error_exits_1(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        def boom(*args: Any, **kwargs: Any) -> None:
+            raise ConversionError("cannot read file")
+
+        monkeypatch.setattr(cli.probe_mod, "probe", boom)
+        result = runner.invoke(cli.app, ["info", "nope.mp4"])
+        assert result.exit_code == 1
+        assert "cannot read file" in combined_output(result)
+
     def test_probe_alias_still_works(self, fake_probe: None) -> None:
         result = runner.invoke(cli.app, ["probe", "in.mp4"])
         assert result.exit_code == 0
@@ -303,3 +379,13 @@ class TestPresetCli:
         result = runner.invoke(cli.app, ["preset", "show", "nope"])
         assert result.exit_code == 1
         assert "Unknown preset" in combined_output(result)
+
+
+class TestWizardDispatchCli:
+    def test_no_args_runs_wizard_argv(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import vidfix.interactive
+
+        monkeypatch.setattr(vidfix.interactive, "wizard", lambda: ["preset", "list"])
+        result = runner.invoke(cli.app, [])
+        assert result.exit_code == 0
+        assert "df30" in result.output

@@ -215,3 +215,43 @@ class TestVerifyCli:
 
         result = CliRunner().invoke(app, ["verify", str(tiny_clip)])
         assert result.exit_code == 1
+
+
+class TestAudioAndPictureGeneration:
+    def test_audio_only_wav(self, tmp_path: Path) -> None:
+        out = tmp_path / "tone.wav"
+        generate(out, duration="1")
+        info = probe(out)
+        assert info.video_codec == "none"
+        assert info.duration == pytest.approx(1.0, abs=0.1)
+        assert info.audio is not None
+
+    def test_audio_layout_5_1(self, tmp_path: Path) -> None:
+        out = tmp_path / "surround.mp4"
+        generate(out, duration="1", res="160x120", layout="5.1")
+        info = probe(out)
+        assert info.audio is not None
+        assert info.audio.channels == 6
+
+    def test_audio_layout_left_is_stereo_pair(self, tmp_path: Path) -> None:
+        out = tmp_path / "left.wav"
+        generate(out, duration="1", layout="left")
+        info = probe(out)
+        assert info.audio is not None
+        assert info.audio.channels == 2
+
+    def test_picture_png(self, tmp_path: Path) -> None:
+        out = tmp_path / "card.png"
+        generate(out, res="160x120")
+        info = probe(out)
+        assert (info.width, info.height) == (160, 120)
+        assert info.duration == 0.0
+
+    def test_convert_audio_layout_mono(self, tiny_clip: Path, tmp_path: Path) -> None:
+        from vidfix import convert
+
+        out = tmp_path / "mono.mp4"
+        convert(tiny_clip, out, layout="mono")
+        info = probe(out)
+        assert info.audio is not None
+        assert info.audio.channels == 1

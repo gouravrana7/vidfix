@@ -203,6 +203,15 @@ class TestOtherFlows:
         Script(monkeypatch, [media_file, "", "30s", ""])
         assert interactive.verify_flow() == ["verify", media_file, "--duration", "30s"]
 
+    def test_format_flow(self, monkeypatch: pytest.MonkeyPatch, media_file: str) -> None:
+        Script(monkeypatch, [media_file, "gif", "out.gif"])
+        assert interactive.format_flow() == ["format", media_file, "-o", "out.gif"]
+
+    def test_variants_flow(self, monkeypatch: pytest.MonkeyPatch, media_file: str) -> None:
+        Script(monkeypatch, [media_file, "30,60", "720p", "grid"])
+        argv = interactive.matrix_flow()
+        assert argv == ["variants", media_file, "--fps", "30,60", "--res", "720p", "-o", "grid"]
+
     def test_wizard_dispatch(self, monkeypatch: pytest.MonkeyPatch, media_file: str) -> None:
         Script(monkeypatch, ["info", media_file])
         assert interactive.wizard() == ["info", media_file]
