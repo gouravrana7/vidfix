@@ -47,6 +47,60 @@ class TestAskSpec:
         interactive.ask_spec("fps", interactive.parse_fps, default=default)
         assert seen["show_default"] is shown
 
+    def test_preset_value_shown_in_hint(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        labels: list[str] = []
+
+        def fake_ask(label: str, **kwargs: object) -> str:
+            labels.append(label)
+            return ""
+
+        monkeypatch.setattr(interactive.Prompt, "ask", staticmethod(fake_ask))
+        interactive.ask_spec("fps", interactive.parse_fps, preset_value="29.97")
+        assert "preset: 29.97" in labels[0]
+        assert "type to override" in labels[0]
+        assert "enter to skip" not in labels[0]
+
+
+class TestGenerateFlowPresetHints:
+    def test_fps_prompt_names_preset_value(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        labels: list[str] = []
+        answers = iter(["", "smpte", "df30", "", "", "", "tone", "stereo", "", False, "out.mp4"])
+
+        def fake_ask(label: str = "", **kwargs: object) -> object:
+            labels.append(label)
+            value = next(answers)
+            default = kwargs.get("default")
+            return default if value == "" and default not in (None, "") else value
+
+        monkeypatch.setattr(interactive.Prompt, "ask", staticmethod(fake_ask))
+        monkeypatch.setattr(interactive.Confirm, "ask", staticmethod(fake_ask))
+        interactive.generate_flow()
+        fps_label = next(lb for lb in labels if lb.startswith("fps"))
+        assert "preset: 29.97" in fps_label  # 30000/1001 shown as its friendly name
+        assert "type to override" in fps_label
+        # df30 sets no duration/res: normal defaults apply, no confusing "skip"
+        duration_label = next(lb for lb in labels if lb.startswith("Duration"))
+        assert "enter to skip" not in duration_label
+
+    def test_convert_prompts_say_keep_source(
+        self, monkeypatch: pytest.MonkeyPatch, media_file: str
+    ) -> None:
+        labels: list[str] = []
+        answers = iter([media_file, "none", "", "", "", "h264", "keep", "out.mp4"])
+
+        def fake_ask(label: str = "", **kwargs: object) -> object:
+            labels.append(label)
+            value = next(answers)
+            default = kwargs.get("default")
+            return default if value == "" and default not in (None, "") else value
+
+        monkeypatch.setattr(interactive.Prompt, "ask", staticmethod(fake_ask))
+        interactive.convert_flow()
+        for start in ("Target fps", "Target duration", "Target resolution"):
+            label = next(lb for lb in labels if lb.startswith(start))
+            assert "enter = keep source" in label
+            assert "enter to skip" not in label
+
 
 class TestConvertFlow:
     def test_full_answers(self, monkeypatch: pytest.MonkeyPatch, media_file: str) -> None:
@@ -98,7 +152,11 @@ class TestOtherFlows:
         Script(monkeypatch, ["", "smpte", "df30", "", "", "", "", "", "", False, "out.mp4"])
         argv = interactive.generate_flow()
         assert "--preset" in argv
-        assert "--fps" not in argv and "--duration" not in argv and "--res" not in argv
+        # Preset-set fields stay blank so the preset wins; fields the preset
+        # does not set fall back to the normal defaults.
+        assert "--fps" not in argv
+        assert argv[argv.index("--duration") + 1] == "5s"
+        assert argv[argv.index("--res") + 1] == "720p"
 
     def test_generate_flow_audio_only(self, monkeypatch: pytest.MonkeyPatch) -> None:
         Script(monkeypatch, ["audio-only", "silence", "left", "2s", "beep.wav"])

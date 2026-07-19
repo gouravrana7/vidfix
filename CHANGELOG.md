@@ -22,10 +22,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Wizard: generate asks video / audio-only / picture, prompts for audio mode and
   channels, lists presets with descriptions, and shows examples in every spec
   question; convert can remix audio channels.
-- `generate` auto-verifies its output (fps/duration/resolution/codec for video,
-  duration for audio-only, resolution for pictures), prints the same pass/fail
-  table as `vidfix verify`, and exits 1 on mismatch.
 - `vidfix info` reads still images without error (duration shown as 0).
+- Wizard prompts always say what enter will do: `(preset: 29.97 — enter to
+  keep, type to override)` when a preset sets the value, `(enter = keep
+  source)` in convert, and normal visible defaults (`(5s)`, `(720p)`)
+  everywhere else — no more ambiguous "skip".
 
 ### Changed
 
@@ -36,6 +37,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `5.1 surround` / `7.1 surround` instead of `2ch`, and sound quality as
   `normal quality (44100 Hz)` / `high quality` / `low quality`
   (`--json` output unchanged).
+
+### Removed
+
+- The pass/fail table `generate` printed after writing a file; check results
+  with `vidfix info` or `vidfix verify` instead.
 
 ### Fixed
 

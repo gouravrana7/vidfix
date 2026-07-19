@@ -207,29 +207,6 @@ def generate(
         _fail(exc)
         return
     console.print(f"[green]✓[/green] wrote {output}")
-    # Auto-verify: confirm the file really has the requested specs.
-    suffix = output.suffix.lower()
-    try:
-        if suffix in generate_mod.AUDIO_EXTENSIONS:
-            result = verify_mod.verify(output, duration=total)
-        elif suffix in formats_mod.IMAGE_EXTS:
-            result = verify_mod.verify(
-                output, res=parse_resolution(merged.get("res") or "1280x720")
-            )
-        else:
-            result = verify_mod.verify(
-                output,
-                fps=parse_fps(merged.get("fps") or "30"),
-                duration=total,
-                res=parse_resolution(merged.get("res") or "1280x720"),
-                codec=merged.get("codec") or "h264",
-            )
-    except VidfixError as exc:
-        _fail(exc)
-        return
-    console.print(_verify_table(f"verified: {output}", result))
-    if not result.passed:
-        _fail(VidfixError(f"{output} does not match the requested specs."))
 
 
 @app.command(

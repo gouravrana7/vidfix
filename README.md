@@ -7,10 +7,10 @@
 
 **vidfix** is a CLI-first media toolkit that creates any video, picture, or
 audio from nothing, converts anything to any format, and fixes existing files
-to exact specs (fps, duration, resolution, audio channels) — then checks its
-own work: every file it creates is verified against what you asked for before
-it says done. Built for anyone — developers, testers, creators, or someone
-who just wants a file converted.
+to exact specs (fps, duration, resolution, audio channels). Check any file
+with `vidfix info` (plain-words details) or `vidfix verify` (pass/fail
+assertions for CI). Built for anyone — developers, testers, creators, or
+someone who just wants a file converted.
 
 ## No commands to learn. It talks to you.
 
@@ -20,8 +20,8 @@ uvx vidfix
 
 That's it — nothing to install, no setup, no boring syntax to memorize.
 vidfix asks what you want step by step in plain words, checks every answer
-as you type it, runs the job, verifies the result, and shows you the
-equivalent one-liner for next time.
+as you type it, runs the job, and shows you the equivalent one-liner for
+next time.
 
 ## Install
 
@@ -49,17 +49,11 @@ Audio channels (mono/stereo/5.1/7.1/left/right) [stereo]: 5.1
 Output file [test.mp4]: fixture.mp4
 equivalent command: vidfix generate --pattern smpte --duration '10 seconds' --audio-layout 5.1 -o fixture.mp4
 ✓ wrote fixture.mp4
-             verified: fixture.mp4
- property     expected          actual        result
- fps          30.000 (±0.01)    30.000 (30)   PASS
- duration     10.000s (±0.1s)   10.000s       PASS
- resolution   1280x720          1280x720      PASS
- codec        h264              h264          PASS
 ```
 
-Every answer is validated on the spot, the finished file is verified against
-your specs, and the equivalent one-liner is printed so you can script it next
-time. Or go straight to the flags:
+Every answer is validated on the spot and the equivalent one-liner is printed
+so you can script it next time. Check the result any time with `vidfix info
+fixture.mp4` or assert it with `vidfix verify`. Or go straight to the flags:
 
 ```bash
 # A 60fps, 30s, 720p SMPTE-bars clip with a burned-in timecode
@@ -78,7 +72,7 @@ Everything vidfix can do, at a glance (details in the sections below):
 
 | Command | What it does |
 |---|---|
-| `vidfix` (no args) | Interactive wizard — answer plain-word prompts, it runs the job, verifies the result, and shows the equivalent one-liner |
+| `vidfix` (no args) | Interactive wizard — answer plain-word prompts, it runs the job and shows the equivalent one-liner |
 | `vidfix generate` | Create synthetic test media to exact specs — videos, audio-only files, or still pictures; patterns, tones, channel layouts, timecode burn-in, no source file needed |
 | `vidfix convert` | Force an existing video to exact fps / duration / resolution / codec (stream-copies when possible) |
 | `vidfix caption` | Burn a text caption into a video — position, size, color, optional start/end window |
@@ -143,9 +137,6 @@ Audio: 440Hz `tone` (default), `silence`, `none` — any layout from `mono` to
 The output extension picks the media kind: video (`.mp4`, `.mov`, …),
 audio-only (`.wav`, `.mp3`, `.m4a`, `.flac`), or a still picture
 (`.png`, `.jpg`, `.jpeg`, `.webp`, `.bmp`, `.tiff`).
-
-Every generated file is auto-verified against the requested specs — the same
-pass/fail table `vidfix verify` prints; a mismatch exits 1.
 
 | Option | Meaning | Default |
 |---|---|---|
