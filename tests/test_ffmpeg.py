@@ -109,3 +109,51 @@ class TestRunnerDiscovery:
         with pytest.raises(Exception) as excinfo:
             runner.run(["-i", "in.mp4", "out.mp4"])
         assert "ffmpeg" in str(excinfo.value).lower()
+
+
+class TestFindFfmpegFallback:
+    def test_imageio_failure_falls_back_to_path(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import imageio_ffmpeg
+
+        import vidfix.core.ffmpeg as fm
+
+        monkeypatch.setattr(
+            imageio_ffmpeg, "get_ffmpeg_exe", lambda: (_ for _ in ()).throw(RuntimeError("boom"))
+        )
+        monkeypatch.setattr(fm.shutil, "which", lambda _: "/usr/local/bin/ffmpeg")
+        assert fm.find_ffmpeg() == "/usr/local/bin/ffmpeg"
+
+    def test_nothing_found_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import imageio_ffmpeg
+
+        import vidfix.core.ffmpeg as fm
+        from vidfix.exceptions import FFmpegNotFoundError
+
+        monkeypatch.setattr(
+            imageio_ffmpeg, "get_ffmpeg_exe", lambda: (_ for _ in ()).throw(RuntimeError("boom"))
+        )
+        monkeypatch.setattr(fm.shutil, "which", lambda _: None)
+        with pytest.raises(FFmpegNotFoundError):
+            fm.find_ffmpeg()
+
+
+class TestProgressEventsSkipsUnparseable:
+    def test_junk_lines_ignored(self) -> None:
+        events = list(progress_events(["garbage", "out_time_us=1000000", "progress=end"]))
+        assert events[-1].done is True
+
+
+class TestRunFailure:
+    def test_nonzero_exit_raises_conversion_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import subprocess
+
+        import vidfix.core.ffmpeg as fm
+
+        def fake_run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+            return subprocess.CompletedProcess(cmd, returncode=3, stdout="", stderr="boom")
+
+        monkeypatch.setattr(fm.subprocess, "run", fake_run)
+        runner = FFmpegRunner(ffmpeg_path="/fake/ffmpeg")
+        with pytest.raises(ConversionError) as excinfo:
+            runner.run(["-i", "nope"])
+        assert "boom" in (excinfo.value.stderr or "")

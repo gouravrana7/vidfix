@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, NoReturn
 
 import typer
 from rich.console import Console
@@ -42,7 +42,7 @@ def main(ctx: typer.Context) -> None:
         app(wizard())
 
 
-def _fail(error: Exception) -> None:
+def _fail(error: Exception) -> NoReturn:
     err_console.print(f"[red]error:[/red] {error}")
     raise typer.Exit(code=1)
 
@@ -205,7 +205,6 @@ def generate(
             )
     except VidfixError as exc:
         _fail(exc)
-        return
     console.print(f"[green]✓[/green] wrote {output}")
 
 
@@ -250,7 +249,6 @@ def caption(
             )
     except VidfixError as exc:
         _fail(exc)
-        return
     console.print(f"[green]✓[/green] wrote {output}")
 
 
@@ -335,7 +333,6 @@ def convert(
             )
     except VidfixError as exc:
         _fail(exc)
-        return
     for warning in plan.warnings:
         err_console.print(f"[yellow]warning:[/yellow] {warning}")
     mode = "stream copy" if plan.stream_copy else "re-encode"
@@ -371,7 +368,6 @@ def format_cmd(
             formats_mod.to_format(input, output)
     except VidfixError as exc:
         _fail(exc)
-        return
     console.print(f"[green]✓[/green] wrote {output}")
 
 
@@ -410,7 +406,6 @@ def verify(
     """Assert a file matches specs; exit 0 on pass, 1 on fail (designed for CI)."""
     if fps is None and duration is None and res is None and codec is None:
         _fail(ValueError("Nothing to verify: pass at least one of --fps/--duration/--res/--codec."))
-        return
     try:
         result = verify_mod.verify(
             input,
@@ -423,7 +418,6 @@ def verify(
         )
     except VidfixError as exc:
         _fail(exc)
-        return
 
     if json_out:
         console.print_json(result.model_dump_json())
@@ -447,7 +441,6 @@ def probe(
         info = probe_mod.probe(input)
     except VidfixError as exc:
         _fail(exc)
-        return
 
     if json_out:
         console.print_json(info.model_dump_json())
@@ -542,7 +535,6 @@ def matrix(
             )
     except VidfixError as exc:
         _fail(exc)
-        return
 
     table = Table(title=f"{input} → {outdir}")
     table.add_column("fps", style="bold cyan")
@@ -571,7 +563,6 @@ def preset_list() -> None:
         presets = presets_mod.load_presets()
     except VidfixError as exc:
         _fail(exc)
-        return
     table = Table()
     table.add_column("name", style="bold cyan")
     table.add_column("description")
@@ -590,14 +581,9 @@ def preset_show(name: Annotated[str, typer.Argument(help="Preset name.")]) -> No
         settings = presets_mod.get_preset(name)
     except VidfixError as exc:
         _fail(exc)
-        return
     table = Table(title=name, show_header=False)
     table.add_column(style="bold cyan")
     table.add_column()
     for key, value in settings.items():
         table.add_row(key, value)
     console.print(table)
-
-
-if __name__ == "__main__":
-    app()

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from vidfix.core.probe import friendly_container, parse_ffmpeg_banner, parse_ffprobe_json
@@ -216,3 +218,90 @@ class TestContainerFromFfprobeJson:
         dumped = info.model_dump()
         assert dumped["container"] == "mp4"
         assert dumped["demuxer"] == "mov,mp4,m4a,3gp,3g2,mj2"
+
+
+class TestProbeErrors:
+    def test_missing_file(self) -> None:
+        from vidfix.core.probe import probe
+
+        with pytest.raises(ProbeError):
+            probe("/no/such/file.mp4")
+
+    def test_json_bad_frame_rate(self) -> None:
+        import json
+
+        payload = json.dumps(
+            {
+                "format": {"format_name": "mp4", "duration": "1.0"},
+                "streams": [
+                    {"codec_type": "video", "avg_frame_rate": "abc", "width": 10, "height": 10}
+                ],
+            }
+        )
+        with pytest.raises(ProbeError):
+            parse_ffprobe_json(payload, "clip.mp4")
+
+    def test_banner_without_fps(self) -> None:
+        banner = (
+            "Input #0, mov,mp4,m4a,3gp,3g2,mj2, from 'clip.mp4':\n"
+            "  Duration: 00:00:01.00, start: 0.000000, bitrate: 100 kb/s\n"
+            "  Stream #0:0(und): Video: h264, yuv420p(progressive), 160x120\n"
+        )
+        with pytest.raises(ProbeError):
+            parse_ffmpeg_banner(banner, "clip.mp4")
+
+
+class TestCoercionHelpers:
+    def test_first_float_skips_junk(self) -> None:
+        from vidfix.core.probe import _first_float
+
+        assert _first_float("abc", None, "2.5") == 2.5
+        assert _first_float("abc", None) is None
+
+    def test_first_int_skips_junk(self) -> None:
+        from vidfix.core.probe import _first_int
+
+        assert _first_int("abc", None, "7") == 7
+        assert _first_int("abc") is None
+
+
+class TestProbeViaFfprobe:
+    def test_ffprobe_json_path(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        import json
+        import subprocess
+
+        import vidfix.core.probe as pm
+        from vidfix.core.ffmpeg import FFmpegRunner
+        from vidfix.core.probe import probe
+
+        media = tmp_path / "clip.mp4"
+        media.write_bytes(b"x")
+        payload = json.dumps(
+            {
+                "format": {
+                    "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+                    "duration": "1.5",
+                    "tags": {"major_brand": "isom"},
+                },
+                "streams": [
+                    {
+                        "codec_type": "video",
+                        "avg_frame_rate": "30/1",
+                        "width": 160,
+                        "height": 120,
+                        "codec_name": "h264",
+                        "pix_fmt": "yuv420p",
+                    },
+                ],
+            }
+        )
+
+        def fake_run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+            return subprocess.CompletedProcess(cmd, returncode=0, stdout=payload, stderr="")
+
+        monkeypatch.setattr(pm.subprocess, "run", fake_run)
+        runner = FFmpegRunner(ffmpeg_path="/fake/ffmpeg", ffprobe_path="/fake/ffprobe")
+        info = probe(media, runner=runner)
+        assert info.container == "mp4"
+        assert info.fps == "30"
+        assert (info.width, info.height) == (160, 120)

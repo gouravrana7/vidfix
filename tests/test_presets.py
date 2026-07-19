@@ -131,3 +131,13 @@ class TestApplyPreset:
     def test_unknown_preset(self) -> None:
         with pytest.raises(PresetError, match="Unknown preset"):
             presets.apply_preset("nope", fps=None)
+
+
+class TestLoadYamlValidation:
+    def test_top_level_must_be_mapping(self) -> None:
+        with pytest.raises(PresetError):
+            presets._load_yaml("- a\n- b\n", "test.yaml")
+
+    def test_each_preset_must_be_mapping(self) -> None:
+        with pytest.raises(PresetError):
+            presets._load_yaml("df30: 5\n", "test.yaml")

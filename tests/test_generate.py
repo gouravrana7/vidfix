@@ -151,3 +151,42 @@ class TestBuildGenerateArgs:
     def test_bad_codec(self) -> None:
         with pytest.raises(InvalidSpecError):
             build_generate_args("out.mp4", FPS30, 5.0, RES, codec="divx")
+
+
+class TestDrawtextFallbacks:
+    def test_find_font_none_when_no_candidates(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import vidfix.core.generate as gen
+
+        monkeypatch.setattr(gen, "_FONT_CANDIDATES", ())
+        assert gen.find_font() is None
+
+    def test_drawtext_runner_falls_back_to_system(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import vidfix.core.generate as gen
+        from vidfix.core.ffmpeg import FFmpegRunner
+
+        monkeypatch.setattr(gen, "_has_drawtext", lambda path: path == "/sys/ffmpeg")
+        monkeypatch.setattr(gen.shutil, "which", lambda _: "/sys/ffmpeg")
+        runner = gen.drawtext_runner(FFmpegRunner(ffmpeg_path="/bundled/ffmpeg"))
+        assert runner.ffmpeg_path == "/sys/ffmpeg"
+
+    def test_drawtext_runner_errors_without_any_support(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import vidfix.core.generate as gen
+        from vidfix.core.ffmpeg import FFmpegRunner
+        from vidfix.exceptions import ConversionError
+
+        monkeypatch.setattr(gen, "_has_drawtext", lambda path: False)
+        monkeypatch.setattr(gen.shutil, "which", lambda _: None)
+        with pytest.raises(ConversionError):
+            gen.drawtext_runner(FFmpegRunner(ffmpeg_path="/bundled/ffmpeg"))
+
+    def test_drawtext_available_false_on_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import vidfix.core.generate as gen
+        from vidfix.exceptions import ConversionError
+
+        def boom(runner: object) -> None:
+            raise ConversionError("no drawtext")
+
+        monkeypatch.setattr(gen, "drawtext_runner", boom)
+        assert gen.drawtext_available() is False
