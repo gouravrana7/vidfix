@@ -17,7 +17,7 @@ from vidfix.core import matrix as matrix_mod
 from vidfix.core import presets as presets_mod
 from vidfix.core import probe as probe_mod
 from vidfix.core import verify as verify_mod
-from vidfix.core.duration import format_seconds, parse_duration, parse_fps, parse_resolution
+from vidfix.core.duration import NAMED_RESOLUTIONS, parse_duration, parse_fps, parse_resolution
 from vidfix.core.ffmpeg import ProgressCallback, ProgressEvent
 from vidfix.exceptions import VidfixError
 
@@ -45,6 +45,55 @@ def main(ctx: typer.Context) -> None:
 def _fail(error: Exception) -> None:
     err_console.print(f"[red]error:[/red] {error}")
     raise typer.Exit(code=1)
+
+
+# Plain-language names for the color formats people actually meet.
+_PIX_FMT_NAMES = {
+    "yuv420p": "standard",
+    "yuv420p10le": "10-bit",
+    "yuv422p": "high color",
+    "yuv444p": "full color",
+}
+
+# Plain-language names for the audio sample rates people actually meet.
+_SAMPLE_RATE_NAMES = {
+    8000: "low quality",
+    22050: "low quality",
+    44100: "normal quality",
+    48000: "normal quality",
+    96000: "high quality",
+    192000: "high quality",
+}
+
+# Plain-language names for audio channel counts.
+_CHANNEL_NAMES = {
+    1: "mono",
+    2: "stereo (left+right)",
+    6: "5.1 surround",
+    8: "7.1 surround",
+}
+
+
+def _verify_table(title: str, result: verify_mod.VerifyResult) -> Table:
+    table = Table(title=title)
+    table.add_column("property", style="bold cyan")
+    table.add_column("expected")
+    table.add_column("actual")
+    table.add_column("result")
+    for check in result.checks:
+        mark = "[green]PASS[/green]" if check.passed else "[red]FAIL[/red]"
+        table.add_row(check.name, check.expected, check.actual, mark)
+    return table
+
+
+def _friendly_duration(seconds: float) -> str:
+    """Plain-language duration: '5.01 seconds', '1m 30s (90.00 seconds)'."""
+    if seconds < 60:
+        return f"{seconds:.2f} seconds"
+    minutes, secs = divmod(round(seconds), 60)
+    hours, minutes = divmod(minutes, 60)
+    clock = f"{hours}h {minutes}m {secs}s" if hours else f"{minutes}m {secs}s"
+    return f"{clock} ({seconds:.2f} seconds)"
 
 
 class _ProgressBar:
@@ -81,11 +130,20 @@ class _ProgressBar:
         "Examples:\n\n"
         "  vidfix generate -o bars.mp4 --fps 60 --duration 30s --res 720p\n\n"
         "  vidfix generate -o df.mp4 --fps 29.97 --pattern testsrc --timecode\n\n"
-        "  vidfix generate -o red.mp4 --pattern solid:red --audio none"
+        "  vidfix generate -o red.mp4 --pattern solid:red --audio none\n\n"
+        "  vidfix generate -o tone.wav --duration 3s --audio-layout left\n\n"
+        "  vidfix generate -o card.png --res 1080p --text 'SCENE 1'"
     )
 )
 def generate(
-    output: Annotated[Path, typer.Option("-o", "--output", help="Output file path.")],
+    output: Annotated[
+        Path,
+        typer.Option(
+            "-o",
+            "--output",
+            help="Output file path (.wav/.mp3/… → audio-only; .png/.jpg/… → picture).",
+        ),
+    ],
     fps: Annotated[
         str | None, typer.Option(help="Frame rate: 30, 59.94, or 30000/1001. Default 30.")
     ] = None,
@@ -103,6 +161,10 @@ def generate(
         str | None, typer.Option(help="Video codec: h264, h265, prores, vp9. Default h264.")
     ] = None,
     audio: Annotated[str, typer.Option(help="Audio track: tone (440Hz), silence, none.")] = "tone",
+    audio_layout: Annotated[
+        str | None,
+        typer.Option("--audio-layout", help="Audio channels: mono, stereo, 5.1, 7.1, left, right."),
+    ] = None,
     timecode: Annotated[
         bool,
         typer.Option(
@@ -131,6 +193,7 @@ def generate(
                 pattern=pattern,
                 codec=merged.get("codec") or "h264",
                 audio=audio,
+                layout=audio_layout,
                 timecode=timecode,
                 drop_frame=drop_frame,
                 text=text,
@@ -140,6 +203,29 @@ def generate(
         _fail(exc)
         return
     console.print(f"[green]✓[/green] wrote {output}")
+    # Auto-verify: confirm the file really has the requested specs.
+    suffix = output.suffix.lower()
+    try:
+        if suffix in generate_mod.AUDIO_EXTENSIONS:
+            result = verify_mod.verify(output, duration=total)
+        elif suffix in formats_mod.IMAGE_EXTS:
+            result = verify_mod.verify(
+                output, res=parse_resolution(merged.get("res") or "1280x720")
+            )
+        else:
+            result = verify_mod.verify(
+                output,
+                fps=parse_fps(merged.get("fps") or "30"),
+                duration=total,
+                res=parse_resolution(merged.get("res") or "1280x720"),
+                codec=merged.get("codec") or "h264",
+            )
+    except VidfixError as exc:
+        _fail(exc)
+        return
+    console.print(_verify_table(f"verified: {output}", result))
+    if not result.passed:
+        _fail(VidfixError(f"{output} does not match the requested specs."))
 
 
 @app.command(
@@ -230,6 +316,13 @@ def convert(
     audio_tone: Annotated[
         bool, typer.Option("--audio-tone", help="Replace audio with a 440Hz test tone.")
     ] = False,
+    audio_layout: Annotated[
+        str | None,
+        typer.Option(
+            "--audio-layout",
+            help="Reshape audio channels: mono, stereo, 5.1, 7.1, left, right.",
+        ),
+    ] = None,
     precise: Annotated[
         bool, typer.Option("--precise", help="Force re-encode for frame-accurate trims.")
     ] = False,
@@ -255,6 +348,7 @@ def convert(
                 stretch=stretch,
                 no_audio=no_audio,
                 audio_tone=audio_tone,
+                layout=audio_layout,
                 precise=precise,
                 on_progress=on_progress,
             )
@@ -353,15 +447,7 @@ def verify(
     if json_out:
         console.print_json(result.model_dump_json())
     else:
-        table = Table(title=str(input))
-        table.add_column("property", style="bold cyan")
-        table.add_column("expected")
-        table.add_column("actual")
-        table.add_column("result")
-        for check in result.checks:
-            mark = "[green]PASS[/green]" if check.passed else "[red]FAIL[/red]"
-            table.add_row(check.name, check.expected, check.actual, mark)
-        console.print(table)
+        console.print(_verify_table(str(input), result))
     raise typer.Exit(code=0 if result.passed else 1)
 
 
@@ -375,7 +461,7 @@ def probe(
         bool, typer.Option("--json", help="Emit machine-readable JSON (jq-friendly).")
     ] = False,
 ) -> None:
-    """Pretty-print media metadata: container, duration, fps, resolution, codecs."""
+    """Pretty-print media details in plain words: type, duration, fps, resolution, codecs."""
     try:
         info = probe_mod.probe(input)
     except VidfixError as exc:
@@ -389,17 +475,40 @@ def probe(
     table = Table(title=str(input), show_header=False)
     table.add_column(style="bold cyan")
     table.add_column()
-    table.add_row("container", info.container)
-    table.add_row("duration", f"{format_seconds(info.duration)} ({info.duration:.3f}s)")
-    table.add_row("resolution", info.resolution)
-    table.add_row("fps", info.fps_display)
-    table.add_row("video codec", info.video_codec)
-    table.add_row("pixel format", info.pix_fmt or "-")
+    kind = "audio" if info.video_codec == "none" else "video"
+    table.add_row("type", f"{info.container} {kind}")
+    table.add_row("duration", _friendly_duration(info.duration))
+    if info.video_codec == "none":
+        table.add_row("video", "none")
+    else:
+        res_names = {str(v): k for k, v in NAMED_RESOLUTIONS.items()}
+        res_name = res_names.get(info.resolution)
+        table.add_row(
+            "resolution", f"{res_name} ({info.resolution})" if res_name else info.resolution
+        )
+        table.add_row("fps", info.fps_display)
+        table.add_row("video codec", info.video_codec)
+        pix_name = _PIX_FMT_NAMES.get(info.pix_fmt or "")
+        table.add_row(
+            "color format", f"{pix_name} ({info.pix_fmt})" if pix_name else info.pix_fmt or "-"
+        )
     table.add_row("bitrate", f"{info.bitrate // 1000} kb/s" if info.bitrate else "-")
     if info.audio:
-        rate = f"{info.audio.sample_rate} Hz" if info.audio.sample_rate else "?"
-        channels = f"{info.audio.channels}ch" if info.audio.channels else "?"
-        table.add_row("audio", f"{info.audio.codec} {rate} {channels}")
+        if info.audio.sample_rate:
+            rate_name = _SAMPLE_RATE_NAMES.get(info.audio.sample_rate)
+            rate = (
+                f"{rate_name} ({info.audio.sample_rate} Hz)"
+                if rate_name
+                else f"{info.audio.sample_rate} Hz"
+            )
+        else:
+            rate = "?"
+        channels = (
+            _CHANNEL_NAMES.get(info.audio.channels, f"{info.audio.channels} channels")
+            if info.audio.channels
+            else "?"
+        )
+        table.add_row("audio", f"{info.audio.codec} · {channels} · {rate}")
     else:
         table.add_row("audio", "none")
     console.print(table)

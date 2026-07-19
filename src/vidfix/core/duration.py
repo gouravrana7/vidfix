@@ -57,7 +57,9 @@ DROP_FRAME_RATES: dict[str, Fraction] = {
 }
 
 _CLOCK_RE = re.compile(r"^(?:(?P<hours>\d+):)?(?P<minutes>\d{1,2}):(?P<seconds>\d{1,2}(?:\.\d+)?)$")
-_SECONDS_RE = re.compile(r"^(?P<value>\d+(?:\.\d+)?)\s*(?P<unit>s|sec|secs|m|min|mins)?$")
+_SECONDS_RE = re.compile(
+    r"^(?P<value>\d+(?:\.\d+)?)\s*(?P<unit>s|secs?|seconds?|m|mins?|minutes?|h|hrs?|hours?)?$"
+)
 _RESOLUTION_RE = re.compile(r"^(?P<width>\d+)\s*[xX]\s*(?P<height>\d+)$")
 _FRACTION_RE = re.compile(r"^(?P<num>\d+)\s*/\s*(?P<den>\d+)$")
 
@@ -65,7 +67,8 @@ _FRACTION_RE = re.compile(r"^(?P<num>\d+)\s*/\s*(?P<den>\d+)$")
 def parse_duration(spec: str | int | float) -> float:
     """Parse a duration spec into seconds.
 
-    Accepted forms: ``90``, ``2.5``, ``30s``, ``5m``, ``1:30``, ``01:02:03.5``.
+    Accepted forms: ``90``, ``2.5``, ``30s``, ``30 seconds``, ``1min``,
+    ``2 hours``, ``1:30``, ``1:30 mins``, ``01:02:03.5``.
     """
     if isinstance(spec, (int, float)):
         return _validate_duration(float(spec), spec)
@@ -73,6 +76,8 @@ def parse_duration(spec: str | int | float) -> float:
     text = spec.strip().lower()
     if not text:
         raise InvalidSpecError("Duration is empty; expected e.g. '30s', '1:30', or '90'.")
+    if ":" in text:  # tolerate "1:30 mins" — the clock form already encodes the unit
+        text = re.sub(r"\s*(m|mins?|minutes?)$", "", text)
 
     clock = _CLOCK_RE.match(text)
     if clock:
@@ -87,8 +92,10 @@ def parse_duration(spec: str | int | float) -> float:
     if simple:
         value = float(simple.group("value"))
         unit = simple.group("unit")
-        if unit in {"m", "min", "mins"}:
+        if unit and unit.startswith("m"):
             value *= 60
+        elif unit and unit.startswith("h"):
+            value *= 3600
         return _validate_duration(value, spec)
 
     raise InvalidSpecError(

@@ -109,3 +109,31 @@ class TestAudio:
     def test_bad_codec(self) -> None:
         with pytest.raises(InvalidSpecError):
             build_convert_plan("in.mp4", "out.mp4", source(), codec="divx")
+
+    def test_layout_channel_count(self) -> None:
+        p = build_convert_plan("in.mp4", "out.mp4", source(), layout="5.1")
+        assert p.args[p.args.index("-ac") + 1] == "6"
+
+    def test_layout_forces_reencode(self) -> None:
+        p = build_convert_plan("in.mp4", "out.mp4", source(), duration=5.0, layout="stereo")
+        assert not p.stream_copy
+
+    def test_layout_pan_combines_with_apad(self) -> None:
+        p = build_convert_plan(
+            "in.mp4", "out.mp4", source(duration=10.0), duration=15.0, layout="left"
+        )
+        assert p.args[p.args.index("-af") + 1] == "pan=stereo|FL=c0,apad"
+
+    def test_layout_conflicts_with_no_audio(self) -> None:
+        with pytest.raises(InvalidSpecError):
+            build_convert_plan("in.mp4", "out.mp4", source(), layout="5.1", no_audio=True)
+
+    def test_layout_needs_audio_track(self) -> None:
+        with pytest.raises(InvalidSpecError):
+            build_convert_plan("in.mp4", "out.mp4", source(audio=False), layout="5.1")
+
+    def test_layout_with_audio_tone_on_silent_source(self) -> None:
+        p = build_convert_plan(
+            "in.mp4", "out.mp4", source(audio=False), audio_tone=True, layout="5.1"
+        )
+        assert p.args[p.args.index("-ac") + 1] == "6"

@@ -5,22 +5,23 @@
 [![Python](https://img.shields.io/pypi/pyversions/vidfix?cacheSeconds=300)](https://pypi.org/project/vidfix/)
 [![License](https://img.shields.io/badge/License-PolyForm_Internal_Use-blue.svg)](LICENSE)
 
-**Videos and images, exactly the way you need them.** vidfix is a CLI-first
-media toolkit for anyone — developers, testers, creators, or someone who
-just wants a file converted: force videos to exact specs (fps, duration,
-resolution), generate test clips from nothing, convert any picture or video to
-any format, grab thumbnails and GIFs, and verify media specs in CI with proper
-exit codes.
+**There's nothing else like vidfix.** A CLI-first media toolkit that creates
+any video, picture, or audio from nothing, converts anything to any format,
+and fixes existing files to exact specs (fps, duration, resolution, audio
+channels) — then checks its own work: every file it creates is verified
+against what you asked for before it says done. Built for anyone —
+developers, testers, creators, or someone who just wants a file converted.
 
-## One command. No syntax to remember.
+## No commands to learn. It talks to you.
 
 ```bash
 uvx vidfix
 ```
 
-That's it — nothing to install, no setup, no flags to
-memorize. vidfix asks what you want, validates every answer as you type it,
-shows you the equivalent one-liner, and runs it. Works for everyone, first try.
+That's it — nothing to install, no setup, no boring syntax to memorize.
+vidfix asks what you want step by step in plain words, checks every answer
+as you type it, runs the job, verifies the result, and shows you the
+equivalent one-liner for next time.
 
 ## Install
 
@@ -37,16 +38,28 @@ Everything vidfix needs is built in — install it and it just works.
 
 ```
 $ vidfix
-What do you want to do? (convert/generate/caption/format/verify/info/variants): convert
-Which file do you want to convert?: raw.mov
-Preset (none/broadcast-1080i/df30/df60/film24/.../web-720p): df60
-Target duration (e.g. 30s, 1:30) (enter to skip): 10s
+What do you want to do? (convert/generate/caption/format/verify/info/variants): generate
+Generate (video/audio-only/picture): video
+Pattern (smpte/color-bars/testsrc/gradient/...): smpte
+Duration (e.g. 30s, 1min, 1:30) [5s]: 10 seconds
+Resolution (e.g. 720p, 1080p, 1280x720) [720p]:
+Audio (tone/silence/none) [tone]: tone
+Audio channels (mono/stereo/5.1/7.1/left/right) [stereo]: 5.1
 ...
-equivalent command: vidfix convert raw.mov --preset df60 --duration 10s --codec h264 -o raw_converted.mov
+Output file [test.mp4]: fixture.mp4
+equivalent command: vidfix generate --pattern smpte --duration '10 seconds' --audio-layout 5.1 -o fixture.mp4
+✓ wrote fixture.mp4
+             verified: fixture.mp4
+ property     expected          actual        result
+ fps          30.000 (±0.01)    30.000 (30)   PASS
+ duration     10.000s (±0.1s)   10.000s       PASS
+ resolution   1280x720          1280x720      PASS
+ codec        h264              h264          PASS
 ```
 
-Every answer is validated on the spot, and the equivalent one-liner is printed
-so you can script it next time. Or go straight to the flags:
+Every answer is validated on the spot, the finished file is verified against
+your specs, and the equivalent one-liner is printed so you can script it next
+time. Or go straight to the flags:
 
 ```bash
 # A 60fps, 30s, 720p SMPTE-bars clip with a burned-in timecode
@@ -65,13 +78,13 @@ Everything vidfix can do, at a glance (details in the sections below):
 
 | Command | What it does |
 |---|---|
-| `vidfix` (no args) | Interactive wizard — answer prompts, see the equivalent one-liner, run it |
-| `vidfix generate` | Create a synthetic test video to exact specs — patterns, test tone, timecode burn-in, no source file needed |
+| `vidfix` (no args) | Interactive wizard — answer plain-word prompts, it runs the job, verifies the result, and shows the equivalent one-liner |
+| `vidfix generate` | Create synthetic test media to exact specs — videos, audio-only files, or still pictures; patterns, tones, channel layouts, timecode burn-in, no source file needed |
 | `vidfix convert` | Force an existing video to exact fps / duration / resolution / codec (stream-copies when possible) |
 | `vidfix caption` | Burn a text caption into a video — position, size, color, optional start/end window |
 | `vidfix format` | Convert any picture or video to any other format by output extension (incl. palette-optimized GIF, thumbnails) |
 | `vidfix verify` | Assert a file matches specs; exit 0 pass / 1 fail — wire straight into CI |
-| `vidfix info` | Pretty-print media metadata: container, duration, fps, resolution, codecs (`--json` for scripts) |
+| `vidfix info` | Show a file's details in plain words: type, duration, fps, resolution, codecs (`--json` for scripts) |
 | `vidfix variants` | Generate the fps × resolution cartesian product of variants, in parallel |
 | `vidfix preset list` / `preset show` | Inspect built-in + user presets (broadcast rate family, see [Presets](#presets)) |
 
@@ -87,6 +100,7 @@ vidfix convert in.mp4 --duration 10s -o out.mp4             # trim: instant stre
 vidfix convert in.mp4 --duration 10s --precise -o out.mp4   # frame-accurate re-encode
 vidfix convert in.mp4 --duration 60s --extend-mode loop -o out.mp4
 vidfix convert in.mp4 --preset df60 -o out.mp4              # 59.94 = exact 60000/1001
+vidfix convert in.mp4 --audio-layout 5.1 -o out.mp4         # remix audio to 5.1
 ```
 
 Trims with an unchanged codec are stream-copied (instant, no quality loss).
@@ -98,7 +112,7 @@ disable). Drop-frame rates are handled as exact rationals
 |---|---|---|
 | `-o, --output` | Output file path | required |
 | `--fps` | Target frame rate: `30`, `59.94`, `30000/1001` | keep source |
-| `--duration` | Target duration: `30s`, `1:30`, `90` — trims or extends | keep source |
+| `--duration` | Target duration: `30s`, `1min`, `1:30`, `90` — trims or extends | keep source |
 | `--res` | Target resolution: `1280x720`, `720p`, `4k` | keep source |
 | `--codec` | Video codec: `h264`, `h265`, `prores`, `vp9` | `h264` |
 | `--preset` | Preset name for defaults (`vidfix preset list`) | — |
@@ -107,6 +121,7 @@ disable). Drop-frame rates are handled as exact rationals
 | `--stretch` | Stretch to target resolution (no pad bars) | off |
 | `--no-audio` | Drop the audio track | off |
 | `--audio-tone` | Replace audio with a 440Hz test tone | off |
+| `--audio-layout` | Reshape audio channels: `mono`, `stereo`, `5.1`, `7.1`, `left`, `right` | keep source |
 | `--precise` | Force re-encode for frame-accurate trims | off |
 
 ### `vidfix generate` — synthetic fixtures from nothing
@@ -116,22 +131,34 @@ vidfix generate -o bars.mp4 --fps 59.94 --duration 30s --res 1080p
 vidfix generate -o count.mp4 --pattern testsrc --timecode    # running timecode overlay
 vidfix generate -o df.mp4 --preset df30 --timecode           # drop-frame HH:MM:SS;FF burn-in
 vidfix generate -o red.mp4 --pattern solid:red --audio none
+vidfix generate -o surround.mp4 --audio-layout 5.1           # 6-channel audio
+vidfix generate -o tone.wav --duration 3s --audio-layout left  # audio-only file
+vidfix generate -o card.png --res 1080p --text "SCENE 1"     # still test card
 ```
 
 Patterns: `smpte`, `color-bars`, `testsrc`, `gradient`, `solid:COLOR`.
-Audio: 440Hz `tone` (default), `silence`, `none`.
+Audio: 440Hz `tone` (default), `silence`, `none` — any layout from `mono` to
+`7.1`, or `left`/`right` for channel-identification checks.
+
+The output extension picks the media kind: video (`.mp4`, `.mov`, …),
+audio-only (`.wav`, `.mp3`, `.m4a`, `.flac`), or a still picture
+(`.png`, `.jpg`, `.jpeg`, `.webp`, `.bmp`, `.tiff`).
+
+Every generated file is auto-verified against the requested specs — the same
+pass/fail table `vidfix verify` prints; a mismatch exits 1.
 
 | Option | Meaning | Default |
 |---|---|---|
-| `-o, --output` | Output file path | required |
+| `-o, --output` | Output file path; extension picks video / audio-only / picture | required |
 | `--fps` | Frame rate: `30`, `59.94`, `30000/1001` | `30` |
-| `--duration` | Duration: `30s`, `1:30`, `90` | `5s` |
+| `--duration` | Duration: `30s`, `30 seconds`, `1min`, `1:30`, `90` | `5s` |
 | `--res` | Resolution: `1280x720`, `720p`, `4k` | `1280x720` |
 | `--pattern` | Test pattern: `smpte`, `color-bars`, `testsrc`, `gradient`, `solid:COLOR` | `smpte` |
 | `--codec` | Video codec: `h264`, `h265`, `prores`, `vp9` | `h264` |
 | `--audio` | Audio track: `tone` (440Hz), `silence`, `none` | `tone` |
+| `--audio-layout` | Audio channels: `mono`, `stereo`, `5.1`, `7.1`, `left`, `right` | `mono` tone / `stereo` silence |
 | `--timecode` | Burn in running timecode (`HH:MM:SS:FF`; drop-frame `;FF` for NTSC) | off |
-| `--text` | Burn a caption into the video | — |
+| `--text` | Burn a caption into the video or picture | — |
 | `--preset` | Preset name for defaults (`vidfix preset list`) | — |
 
 ### `vidfix verify` — spec assertions for CI
@@ -162,22 +189,28 @@ vidfix info clip.mp4 --json      # jq-friendly
 
 ```
 $ vidfix info clip.mp4
- container     mp4
- duration      0:00:30.030 (30.030s)
- resolution    1280x720
+ type          mp4 video
+ duration      30.03 seconds
+ resolution    1080p (1920x1080)
  fps           29.970 (df30, 30000/1001)
  video codec   h264
- pixel format  yuv420p
+ color format  standard (yuv420p)
  bitrate       1200 kb/s
- audio         aac 44100 Hz 2ch
+ audio         aac · stereo (left+right) · normal quality (44100 Hz)
 ```
 
-The container name is resolved from the file's `major_brand` tag (mp4/mov/m4a/3gp)
-or the extension — not the raw demuxer list (`mov,mp4,m4a,3gp,3g2,mj2`);
-`--json` keeps the raw string as `demuxer` and the tag as `major_brand` alongside
-the friendly `container`. Broadcast rates get their preset-family label in the fps
-line (`df30`, `df60`, `pal25`, `pal50`, `film24`, `film23976`) so you can read them
-at a glance.
+Everything reads in plain words, with the technical value kept in brackets:
+the type says whether the file is video or audio, durations are in seconds
+(`1m 30s (90.00 seconds)` for longer files), common resolutions get their
+everyday name (`1080p`, `4k`), color formats a plain label (`standard`,
+`10-bit`), audio channels show as `mono`/`stereo`/`5.1`/`7.1` instead of a
+channel count (`stereo (left+right)`, `5.1 surround`), and sound quality in
+everyday words (`normal quality (44100 Hz)`, `high quality`, `low quality`). The file type is resolved from the file's `major_brand` tag
+(mp4/mov/m4a/3gp) or the extension — not the raw demuxer list
+(`mov,mp4,m4a,3gp,3g2,mj2`); `--json` keeps the raw string as `demuxer` and the
+tag as `major_brand` alongside the friendly `container`. Broadcast rates get
+their preset-family label in the fps line (`df30`, `df60`, `pal25`, `pal50`,
+`film24`, `film23976`) so you can read them at a glance.
 
 ### `vidfix caption` — burn text into a video
 

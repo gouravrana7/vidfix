@@ -5,6 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `--audio-layout` on `generate` and `convert`: shape audio channels as `mono`,
+  `stereo`, `5.1`, `7.1`, or `left`/`right` (tone in one channel of a stereo
+  pair, for channel-identification checks).
+- Audio-only generation: `vidfix generate -o tone.wav` (also `.mp3`, `.m4a`,
+  `.flac`) produces a sound file with no video stream.
+- Picture generation: `vidfix generate -o card.png` (also `.jpg`, `.jpeg`,
+  `.webp`, `.bmp`, `.tiff`) produces a single-frame test card, with optional
+  `--text` caption.
+- `vidfix info` now reads audio-only files (shows `video: none`).
+- Friendlier durations everywhere: `30 seconds`, `1min`, `2 hours`, `1:30 mins`.
+- Wizard: generate asks video / audio-only / picture, prompts for audio mode and
+  channels, lists presets with descriptions, and shows examples in every spec
+  question; convert can remix audio channels.
+- `generate` auto-verifies its output (fps/duration/resolution/codec for video,
+  duration for audio-only, resolution for pictures), prints the same pass/fail
+  table as `vidfix verify`, and exits 1 on mismatch.
+- `vidfix info` reads still images without error (duration shown as 0).
+
+### Changed
+
+- `vidfix info` speaks plain language, technical value in brackets:
+  `type: mp4 video` instead of `container`, durations as `5.01 seconds` /
+  `1m 30s (90.00 seconds)`, resolutions as `720p (1280x720)`, color formats
+  as `standard (yuv420p)`, audio channels as `mono` / `stereo (left+right)` /
+  `5.1 surround` / `7.1 surround` instead of `2ch`, and sound quality as
+  `normal quality (44100 Hz)` / `high quality` / `low quality`
+  (`--json` output unchanged).
+
 ## [0.1.2] - 2026-07-18
 
 ### Changed

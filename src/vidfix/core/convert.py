@@ -20,6 +20,7 @@ from vidfix.core.ffmpeg import (
     audio_codec_args,
     video_codec_args,
 )
+from vidfix.core.generate import AUDIO_LAYOUTS, PAN_LAYOUTS, validate_layout
 from vidfix.core.probe import MediaInfo, probe
 from vidfix.exceptions import InvalidSpecError
 
@@ -48,6 +49,7 @@ def build_convert_plan(
     stretch: bool = False,
     no_audio: bool = False,
     audio_tone: bool = False,
+    layout: str | None = None,
     precise: bool = False,
 ) -> ConvertPlan:
     """Pure planner: decide stream-copy vs re-encode and build the argument list."""
@@ -56,6 +58,13 @@ def build_convert_plan(
             f"Unknown extend mode {extend_mode!r}; expected one of: {EXTEND_MODES}."
         )
     video_codec_args(codec, output)  # validate codec/container early
+    validate_layout(layout)
+    if layout and no_audio:
+        raise InvalidSpecError("--audio-layout conflicts with --no-audio.")
+    if layout and source.audio is None and not audio_tone:
+        raise InvalidSpecError(
+            f"{input_path} has no audio track to reshape; add one with --audio-tone."
+        )
 
     same_codec = CODEC_PROBE_NAMES[codec] == source.video_codec
     only_trim = (
@@ -63,6 +72,7 @@ def build_convert_plan(
         and res is None
         and not smooth
         and not audio_tone
+        and layout is None
         and duration is not None
         and duration < source.duration
     )
@@ -123,8 +133,15 @@ def build_convert_plan(
         args.append("-an")
     elif source.audio is not None or audio_tone:
         args += audio_codec_args(output)
+        if layout in AUDIO_LAYOUTS:
+            args += ["-ac", str(AUDIO_LAYOUTS[layout])]
+        af: list[str] = []
+        if layout in PAN_LAYOUTS:
+            af.append(PAN_LAYOUTS[layout])
         if extending and extend_mode == "freeze" and not audio_tone:
-            args += ["-af", "apad"]  # pad audio with silence to match the frozen video
+            af.append("apad")  # pad audio with silence to match the frozen video
+        if af:
+            args += ["-af", ",".join(af)]
 
     if duration is not None:
         args += ["-t", f"{duration}"]
@@ -144,6 +161,7 @@ def convert(
     stretch: bool = False,
     no_audio: bool = False,
     audio_tone: bool = False,
+    layout: str | None = None,
     precise: bool = False,
     runner: FFmpegRunner | None = None,
     on_progress: ProgressCallback | None = None,
@@ -164,6 +182,7 @@ def convert(
         stretch=stretch,
         no_audio=no_audio,
         audio_tone=audio_tone,
+        layout=layout,
         precise=precise,
     )
     runner.run(plan.args, on_progress=on_progress)

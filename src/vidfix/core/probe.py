@@ -67,10 +67,12 @@ class MediaInfo(BaseModel):
     demuxer: str | None = None  # raw ffprobe/ffmpeg format name, e.g. "mov,mp4,m4a,3gp,3g2,mj2"
     major_brand: str | None = None  # ISO base-media brand tag, e.g. "isom"
     duration: float
-    width: int
-    height: int
-    fps: str  # exact rational text, e.g. "30000/1001" or "30"
-    video_codec: str
+    # Video fields default to zero-values for audio-only files (e.g. wav/mp3),
+    # so spec checks against them fail honestly instead of crashing.
+    width: int = 0
+    height: int = 0
+    fps: str = "0"  # exact rational text, e.g. "30000/1001" or "30"
+    video_codec: str = "none"
     pix_fmt: str | None = None
     bitrate: int | None = None  # bits per second, container-level
     audio: AudioInfo | None = None
@@ -105,21 +107,29 @@ def parse_ffprobe_json(payload: str, path: str) -> MediaInfo:
     fmt = data.get("format", {})
     streams = data.get("streams", [])
     video = next((s for s in streams if s.get("codec_type") == "video"), None)
-    if video is None:
-        raise ProbeError(f"No video stream found in {path}")
     audio = next((s for s in streams if s.get("codec_type") == "audio"), None)
+    if video is None and audio is None:
+        raise ProbeError(f"No media streams found in {path}")
 
-    rate = video.get("avg_frame_rate") or "0/0"
-    if rate in ("0/0", "0"):
-        rate = video.get("r_frame_rate") or "0/0"
-    try:
-        fps = parse_fps(rate)
-    except Exception as exc:
-        raise ProbeError(f"Cannot determine frame rate of {path} (got {rate!r})") from exc
+    video_fields: dict[str, Any] = {}
+    if video is not None:
+        rate = video.get("avg_frame_rate") or "0/0"
+        if rate in ("0/0", "0"):
+            rate = video.get("r_frame_rate") or "0/0"
+        try:
+            fps = parse_fps(rate)
+        except Exception as exc:
+            raise ProbeError(f"Cannot determine frame rate of {path} (got {rate!r})") from exc
+        video_fields = {
+            "width": int(video["width"]),
+            "height": int(video["height"]),
+            "fps": str(fps),
+            "video_codec": video.get("codec_name", "unknown"),
+            "pix_fmt": video.get("pix_fmt"),
+        }
 
-    duration = _first_float(fmt.get("duration"), video.get("duration"))
-    if duration is None:
-        raise ProbeError(f"Cannot determine duration of {path}")
+    # Still images have no duration; report 0 rather than failing the probe.
+    duration = _first_float(fmt.get("duration"), (video or {}).get("duration")) or 0.0
 
     audio_info = None
     if audio is not None:
@@ -138,13 +148,9 @@ def parse_ffprobe_json(payload: str, path: str) -> MediaInfo:
         demuxer=demuxer,
         major_brand=brand,
         duration=duration,
-        width=int(video["width"]),
-        height=int(video["height"]),
-        fps=str(fps),
-        video_codec=video.get("codec_name", "unknown"),
-        pix_fmt=video.get("pix_fmt"),
         bitrate=_first_int(fmt.get("bit_rate")),
         audio=audio_info,
+        **video_fields,
     )
 
 
@@ -168,23 +174,39 @@ _CHANNEL_LAYOUTS = {"mono": 1, "stereo": 2, "2.1": 3, "5.1": 6, "7.1": 8}
 def parse_ffmpeg_banner(stderr: str, path: str) -> MediaInfo:
     """Build a :class:`MediaInfo` from the ``ffmpeg -i`` stderr banner (fallback path)."""
     video = _BANNER_VIDEO_RE.search(stderr)
+    audio_m = _BANNER_AUDIO_RE.search(stderr)
     duration_m = _BANNER_DURATION_RE.search(stderr)
-    if video is None or duration_m is None:
+    if video is None and audio_m is None:
         raise ProbeError(
             f"Cannot probe {path}: not a recognizable media file.\n{stderr.strip()[-500:]}"
         )
 
-    hours, minutes, seconds = (
-        int(duration_m.group(1)),
-        int(duration_m.group(2)),
-        float(duration_m.group(3)),
-    )
-    bitrate_text = duration_m.group(4)
+    # Still images print "Duration: N/A"; report 0 rather than failing the probe.
+    duration = 0.0
+    bitrate_text = "N/A"
+    if duration_m:
+        hours, minutes, seconds = (
+            int(duration_m.group(1)),
+            int(duration_m.group(2)),
+            float(duration_m.group(3)),
+        )
+        duration = hours * 3600 + minutes * 60 + seconds
+        bitrate_text = duration_m.group(4)
 
-    fps_m = _BANNER_FPS_RE.search(video.group("rest")) or _BANNER_TBR_RE.search(video.group("rest"))
-    if fps_m is None:
-        raise ProbeError(f"Cannot determine frame rate of {path} from ffmpeg output.")
-    fps = parse_fps(fps_m.group(1))
+    video_fields: dict[str, Any] = {}
+    if video is not None:
+        fps_m = _BANNER_FPS_RE.search(video.group("rest")) or _BANNER_TBR_RE.search(
+            video.group("rest")
+        )
+        if fps_m is None:
+            raise ProbeError(f"Cannot determine frame rate of {path} from ffmpeg output.")
+        video_fields = {
+            "width": int(video.group("width")),
+            "height": int(video.group("height")),
+            "fps": str(parse_fps(fps_m.group(1))),
+            "video_codec": video.group("codec"),
+            "pix_fmt": video.group("pix_fmt"),
+        }
 
     container_m = _BANNER_INPUT_RE.search(stderr)
     demuxer = container_m.group(1) if container_m else "unknown"
@@ -192,7 +214,6 @@ def parse_ffmpeg_banner(stderr: str, path: str) -> MediaInfo:
     brand = brand_m.group(1) if brand_m else None
 
     audio_info = None
-    audio_m = _BANNER_AUDIO_RE.search(stderr)
     if audio_m:
         audio_info = AudioInfo(
             codec=audio_m.group("codec"),
@@ -205,14 +226,10 @@ def parse_ffmpeg_banner(stderr: str, path: str) -> MediaInfo:
         container=friendly_container(demuxer, brand, path),
         demuxer=demuxer,
         major_brand=brand,
-        duration=hours * 3600 + minutes * 60 + seconds,
-        width=int(video.group("width")),
-        height=int(video.group("height")),
-        fps=str(fps),
-        video_codec=video.group("codec"),
-        pix_fmt=video.group("pix_fmt"),
+        duration=duration,
         bitrate=int(bitrate_text) * 1000 if bitrate_text.isdigit() else None,
         audio=audio_info,
+        **video_fields,
     )
 
 
