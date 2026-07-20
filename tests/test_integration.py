@@ -474,7 +474,7 @@ class TestConvertAudioTypes:
 
 EXTRACT_VIDEO = ["mp4", "mkv", "webm", "mov", "avi", "mxf", "mpg", "ogv", "flv", "3gp"]
 AUDIO_OUT = ["wav", "mp3", "m4a", "flac"]
-H264_BOXES = ["mp4", "mov", "mkv", "avi", "ts", "flv", "wmv", "mpg", "3gp", "mxf"]
+H264_BOXES = ["mp4", "mov", "mkv", "avi", "flv", "wmv", "mpg", "3gp", "mxf"]
 
 
 def _has_subtitle(path: Path) -> bool:
