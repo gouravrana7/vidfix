@@ -216,6 +216,20 @@ class TestOtherFlows:
         Script(monkeypatch, ["info", media_file])
         assert interactive.wizard() == ["info", media_file]
 
+    def test_wizard_default_action_is_generate(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        seen: dict[str, object] = {}
+
+        def fake_ask(label: str = "", **kwargs: object) -> str:
+            if label.startswith("What do you want"):
+                seen.update(kwargs)
+            return str(kwargs.get("default") or "test.mp4")
+
+        monkeypatch.setattr(interactive.Prompt, "ask", staticmethod(fake_ask))
+        monkeypatch.setattr(interactive.Confirm, "ask", staticmethod(lambda *a, **k: False))
+        interactive.wizard()
+        assert seen["default"] == "generate"
+        assert interactive.ACTIONS[0] == "generate"
+
 
 class TestAskSpecRequired:
     def test_blank_reprompts_when_not_optional(self, monkeypatch: pytest.MonkeyPatch) -> None:

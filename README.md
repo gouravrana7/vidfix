@@ -38,7 +38,7 @@ Everything vidfix needs is built in — install it and it just works.
 
 ```
 $ vidfix
-What do you want to do? (convert/generate/caption/format/verify/info/variants): generate
+What do you want to do? (generate/convert/caption/format/verify/info/variants) [generate]:
 Generate (video/audio-only/picture): video
 Pattern (smpte/color-bars/testsrc/gradient/...): smpte
 Duration (e.g. 30s, 1min, 1:30) [5s]: 10 seconds

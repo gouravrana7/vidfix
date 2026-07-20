@@ -23,7 +23,7 @@ from vidfix.exceptions import VidfixError
 
 console = Console()
 
-ACTIONS = ("convert", "generate", "caption", "format", "verify", "info", "variants")
+ACTIONS = ("generate", "convert", "caption", "format", "verify", "info", "variants")
 
 AUDIO_CHANNEL_CHOICES = ["mono", "stereo", "5.1", "7.1", "left", "right"]
 
@@ -269,7 +269,7 @@ FLOWS: dict[str, Callable[[], list[str]]] = {
 def wizard() -> list[str]:
     """Collect answers, show the equivalent command, and return its argv."""
     console.print("[bold]vidfix[/bold] — answer a few questions, no syntax needed.\n")
-    action = Prompt.ask("What do you want to do?", choices=list(ACTIONS), default="convert")
+    action = Prompt.ask("What do you want to do?", choices=list(ACTIONS), default="generate")
     argv = FLOWS[action]()
     console.print(f"\n[dim]equivalent command:[/dim] [bold]vidfix {shlex.join(argv)}[/bold]\n")
     return argv
