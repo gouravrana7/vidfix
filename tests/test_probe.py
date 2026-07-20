@@ -91,12 +91,12 @@ class TestParseFfmpegBanner:
         info = parse_ffmpeg_banner(FFMPEG_BANNER, "clip.mp4")
         assert info.width == 1280
         assert info.height == 720
-        assert info.fps == "30000/1001"  # 29.97 mapped to the exact NTSC rational
+        assert info.fps == "30000/1001"
         assert info.duration == pytest.approx(30.03)
         assert info.video_codec == "h264"
         assert info.pix_fmt == "yuv420p"
         assert info.bitrate == 1200000
-        assert info.container == "mp4"  # friendly name from major_brand isom
+        assert info.container == "mp4"
         assert info.demuxer == "mov,mp4,m4a,3gp,3g2,mj2"
         assert info.major_brand == "isom"
         assert info.audio is not None
@@ -115,7 +115,6 @@ class TestParseFfmpegBanner:
         assert info.audio is not None and info.audio.codec == "aac"
 
     def test_pix_fmt_qualifier_with_comma(self) -> None:
-        # ffmpeg writes e.g. "yuv420p(tv, progressive)" — comma inside parens
         banner = FFMPEG_BANNER.replace("yuv420p(progressive)", "yuv420p(tv, progressive)")
         info = parse_ffmpeg_banner(banner, "clip.mp4")
         assert info.pix_fmt == "yuv420p"
@@ -160,11 +159,9 @@ class TestFriendlyContainer:
             ("mov,mp4,m4a,3gp,3g2,mj2", "M4A", "a.m4a", "m4a"),
             ("mov,mp4,m4a,3gp,3g2,mj2", "3gp4", "a.3gp", "3gp"),
             ("mov,mp4,m4a,3gp,3g2,mj2", "3gp6", "a.3gp", "3gp"),
-            # no major_brand: extension is the sanity fallback for multi-name demuxers
             ("matroska,webm", None, "a.mkv", "mkv"),
             ("matroska,webm", None, "a.webm", "webm"),
             ("mov,mp4,m4a,3gp,3g2,mj2", None, "a.mp4", "mp4"),
-            # single-name demuxers pass through untouched
             ("avi", None, "a.avi", "avi"),
             ("flv", None, "weird.bin", "flv"),
         ],
@@ -184,7 +181,6 @@ class TestContainerFromFfprobeJson:
         assert info.demuxer == "mov,mp4,m4a,3gp,3g2,mj2"
 
     def test_mov_qt_brand_padded(self) -> None:
-        # ffprobe pads the qt brand with trailing spaces
         info = parse_ffprobe_json(_ffprobe_json("mov,mp4,m4a,3gp,3g2,mj2", "qt  "), "clip.mov")
         assert info.container == "mov"
         assert info.major_brand == "qt"
@@ -205,7 +201,7 @@ class TestContainerFromFfprobeJson:
             ("30000/1001", "29.970 (df30, 30000/1001)"),
             ("24000/1001", "23.976 (film23976, 24000/1001)"),
             ("25/1", "25.000 (pal25, 25)"),
-            ("30/1", "30.000 (30)"),  # non-broadcast rates have no label
+            ("30/1", "30.000 (30)"),
         ],
     )
     def test_fps_display_labels(self, rate: str, expected: str) -> None:

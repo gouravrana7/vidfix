@@ -8,6 +8,8 @@ from vidfix.core.ffmpeg import (
     BASE_FLAGS,
     FFmpegRunner,
     ProgressEvent,
+    audio_codec_args,
+    default_codec_for,
     parse_progress_line,
     progress_events,
     video_codec_args,
@@ -17,7 +19,7 @@ from vidfix.exceptions import ConversionError, InvalidSpecError, stderr_tail
 
 class TestVideoCodecArgs:
     def test_prores_rejected_in_mp4(self) -> None:
-        with pytest.raises(InvalidSpecError, match="mov"):
+        with pytest.raises(InvalidSpecError, match="can't hold prores"):
             video_codec_args("prores", "out.mp4")
 
     def test_prores_allowed_in_mov(self) -> None:
@@ -25,6 +27,47 @@ class TestVideoCodecArgs:
 
     def test_output_optional(self) -> None:
         assert "libx264" in video_codec_args("h264")
+
+    def test_new_codecs_have_args(self) -> None:
+        assert "mpeg2video" in video_codec_args("mpeg2")
+        assert "libtheora" in video_codec_args("theora")
+
+
+class TestDefaultCodecFor:
+    @pytest.mark.parametrize(
+        ("output", "codec"),
+        [
+            ("out.mp4", "h264"),
+            ("out.mov", "h264"),
+            ("out.webm", "vp9"),
+            ("out.ogv", "theora"),
+            ("out.mpg", "mpeg2"),
+            ("out.mpeg", "mpeg2"),
+            ("out.mxf", "mpeg2"),
+            ("out.UNKNOWN", "h264"),
+        ],
+    )
+    def test_container_picks_codec(self, output: str, codec: str) -> None:
+        assert default_codec_for(output) == codec
+
+
+class TestAudioCodecArgs:
+    @pytest.mark.parametrize(
+        ("output", "encoder"),
+        [
+            ("out.mp4", "aac"),
+            ("out.webm", "libopus"),
+            ("out.ogv", "libvorbis"),
+            ("out.mpg", "ac3"),
+            ("out.mxf", "pcm_s16le"),
+        ],
+    )
+    def test_container_picks_audio(self, output: str, encoder: str) -> None:
+        assert encoder in audio_codec_args(output)
+
+    def test_mxf_forces_48k(self) -> None:
+        args = audio_codec_args("out.mxf")
+        assert args[args.index("-ar") + 1] == "48000"
 
 
 class TestParseProgressLine:

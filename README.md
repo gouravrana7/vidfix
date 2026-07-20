@@ -21,7 +21,8 @@ uvx vidfix
 That's it — nothing to install, no setup, no boring syntax to memorize.
 vidfix asks what you want step by step in plain words, checks every answer
 as you type it, runs the job, and shows you the equivalent one-liner for
-next time.
+next time. When it's done it prints the **full path where the file was saved**,
+so you never have to hunt for the output.
 
 ## Install
 
@@ -40,15 +41,16 @@ Everything vidfix needs is built in — install it and it just works.
 $ vidfix
 What do you want to do? (generate/convert/caption/format/verify/info/variants) [generate]:
 Generate (video/audio-only/picture): video
+Output file [test.mp4]: fixture.mp4
 Pattern (smpte/color-bars/testsrc/gradient/...): smpte
 Duration (e.g. 30s, 1min, 1:30) [5s]: 10 seconds
 Resolution (e.g. 720p, 1080p, 1280x720) [720p]:
 Audio (tone/silence/none) [tone]: tone
 Audio channels (mono/stereo/5.1/7.1/left/right) [stereo]: 5.1
 ...
-Output file [test.mp4]: fixture.mp4
 equivalent command: vidfix generate --pattern smpte --duration '10 seconds' --audio-layout 5.1 -o fixture.mp4
 ✓ wrote fixture.mp4
+  location: /Users/you/clips/fixture.mp4
 ```
 
 Every answer is validated on the spot and the equivalent one-liner is printed
@@ -76,7 +78,8 @@ Everything vidfix can do, at a glance (details in the sections below):
 | `vidfix generate` | Create synthetic test media to exact specs — videos, audio-only files, or still pictures; patterns, tones, channel layouts, timecode burn-in, no source file needed |
 | `vidfix convert` | Force an existing video to exact fps / duration / resolution / codec (stream-copies when possible) |
 | `vidfix caption` | Burn a text caption into a video — position, size, color, optional start/end window |
-| `vidfix format` | Convert any picture or video to any other format by output extension (incl. palette-optimized GIF, thumbnails) |
+| `vidfix attach` | Mux an existing audio file and/or subtitle (.srt/.vtt) onto a video — soft track or `--burn`-ed in |
+| `vidfix format` | Convert any picture or video to any other format by output extension (incl. palette-optimized GIF, thumbnails, audio extraction) |
 | `vidfix verify` | Assert a file matches specs; exit 0 pass / 1 fail — wire straight into CI |
 | `vidfix info` | Show a file's details in plain words: type, duration, fps, resolution, codecs (`--json` for scripts) |
 | `vidfix variants` | Generate the fps × resolution cartesian product of variants, in parallel |
@@ -108,15 +111,16 @@ disable). Drop-frame rates are handled as exact rationals
 | `--fps` | Target frame rate: `30`, `59.94`, `30000/1001` | keep source |
 | `--duration` | Target duration: `30s`, `1min`, `1:30`, `90` — trims or extends | keep source |
 | `--res` | Target resolution: `1280x720`, `720p`, `4k` | keep source |
-| `--codec` | Video codec: `h264`, `h265`, `prores`, `vp9` | `h264` |
+| `--codec` | Video codec: `h264`, `h265`, `prores`, `vp9`, `mpeg2`, `theora` | fits the output container |
 | `--preset` | Preset name for defaults (`vidfix preset list`) | — |
 | `--smooth` | Motion-interpolate fps changes (minterpolate) | off |
 | `--extend-mode` | When target duration > source: `freeze` last frame or `loop` | `freeze` |
 | `--stretch` | Stretch to target resolution (no pad bars) | off |
-| `--no-audio` | Drop the audio track | off |
-| `--audio-tone` | Replace audio with a 440Hz test tone | off |
+| `--audio` | Audio track: `keep` source, `tone` (440Hz), `silence`, `none` (drop) — matches `generate` (`--no-audio`/`--audio-tone` still work as aliases) | `keep` |
 | `--audio-layout` | Reshape audio channels: `mono`, `stereo`, `5.1`, `7.1`, `left`, `right` | keep source |
 | `--precise` | Force re-encode for frame-accurate trims | off |
+| `--text` + `--position`/`--size`/`--color`/`--start`/`--end` | Burn a caption while converting (same options as `caption`) | — |
+| `--timecode` | Burn in a running timecode | off |
 
 ### `vidfix generate` — synthetic fixtures from nothing
 
@@ -145,11 +149,14 @@ audio-only (`.wav`, `.mp3`, `.m4a`, `.flac`), or a still picture
 | `--duration` | Duration: `30s`, `30 seconds`, `1min`, `1:30`, `90` | `5s` |
 | `--res` | Resolution: `1280x720`, `720p`, `4k` | `1280x720` |
 | `--pattern` | Test pattern: `smpte`, `color-bars`, `testsrc`, `gradient`, `solid:COLOR` | `smpte` |
-| `--codec` | Video codec: `h264`, `h265`, `prores`, `vp9` | `h264` |
+| `--codec` | Video codec: `h264`, `h265`, `prores`, `vp9`, `mpeg2`, `theora` | fits the output container |
 | `--audio` | Audio track: `tone` (440Hz), `silence`, `none` | `tone` |
 | `--audio-layout` | Audio channels: `mono`, `stereo`, `5.1`, `7.1`, `left`, `right` | `mono` tone / `stereo` silence |
 | `--timecode` | Burn in running timecode (`HH:MM:SS:FF`; drop-frame `;FF` for NTSC) | off |
 | `--text` | Burn a caption into the video or picture | — |
+| `--position` | Caption placement: `top`/`center`/`bottom`, optionally `-left`/`-right` (9-point grid) | `bottom` |
+| `--size` / `--color` | Caption font size (`h/12`, pixels) and color (`white`, `yellow`, `#ff0000`) | `h/12` / `white` |
+| `--start` / `--end` | Show the caption only within this second window | full clip |
 | `--preset` | Preset name for defaults (`vidfix preset list`) | — |
 
 ### `vidfix verify` — spec assertions for CI
@@ -209,20 +216,45 @@ their preset-family label in the fps line (`df30`, `df60`, `pal25`, `pal50`,
 vidfix caption in.mp4 --text "Take 42" -o out.mp4
 vidfix caption in.mp4 --text "INTRO" --position top --color yellow -o out.mp4
 vidfix caption in.mp4 --text "3..2..1" --start 0 --end 3 -o out.mp4
+vidfix caption in.mp4 --text "corner" --position top-right -o out.mp4
 vidfix generate -o clip.mp4 --text "TEST CLIP"      # caption a generated video too
+vidfix convert in.mp4 --text "SUBTITLE" --position bottom -o out.mp4   # or while converting
 ```
 
-Positions: `top`, `center`, `bottom` (default). Audio is stream-copied untouched.
+Positions form a 3×3 grid: `top-left`, `top`, `top-right`, `left`, `center`,
+`right`, `bottom-left`, `bottom` (default), `bottom-right`. The same caption
+options are available on `caption`, `generate`, and `convert`. Audio is
+stream-copied untouched (in `caption`).
 
 | Option | Meaning | Default |
 |---|---|---|
 | `-o, --output` | Output file path | required |
 | `--text` | Caption text to burn in | required |
-| `--position` | Placement: `top`, `center`, `bottom` | `bottom` |
+| `--position` | Placement (9-point grid, see above) | `bottom` |
 | `--size` | Font size (pixels or expression like `h/12`) | `h/12` |
 | `--color` | Font color: `white`, `yellow`, `#ff0000` | `white` |
 | `--start` | Show caption from this second onward | whole video |
 | `--end` | Hide caption after this second | whole video |
+
+### `vidfix attach` — mux audio and/or subtitles onto a video
+
+```bash
+vidfix attach clip.mp4 --audio track.m4a -o out.mp4                 # add an audio track
+vidfix attach clip.mp4 --subs subs.srt -o out.mkv                   # soft subtitle track
+vidfix attach clip.mp4 --subs subs.srt --burn -o out.mp4           # burn subtitles into the picture
+vidfix attach clip.mp4 --audio track.m4a --subs subs.srt -o out.mkv # all at once
+```
+
+| Option | Meaning | Default |
+|---|---|---|
+| `-o, --output` | Output file path | required |
+| `--audio` | Audio file to mux onto the video | — |
+| `--subs` | Subtitle file (.srt/.vtt) to add | — |
+| `--burn` | Burn subtitles into the picture (else a soft, toggle-able track) | off |
+
+The video is stream-copied (no re-encode, no quality loss) unless subtitles are
+burned in. Soft subtitles need a `.mp4`/`.mov`/`.mkv`/`.webm` output — for other
+containers use `--burn`.
 
 ### `vidfix format` — any picture or video to any format
 
@@ -231,9 +263,14 @@ vidfix format clip.mov -o clip.mp4      # container conversion
 vidfix format clip.mp4 -o clip.gif      # palette-optimized gif
 vidfix format photo.png -o photo.webp   # image conversion
 vidfix format clip.mp4 -o thumb.jpg     # first-frame thumbnail
+vidfix format clip.mp4 -o audio.mp3     # extract the audio track
 ```
 
 The output extension picks the format — the only option is `-o, --output` (required).
+Video targets: `mp4`, `mov`, `mkv`, `webm`, `avi`, `m4v`, `ts`, `mxf`, `mpg`, `ogv`,
+`flv`, `wmv`, `3gp`, `gif`. Picture targets: `png`, `jpg`, `webp`, `bmp`, `tiff`.
+Audio targets (extract from a video): `wav`, `mp3`, `m4a`, `flac`.
+`generate` and `convert` write those containers too — each picks a codec that plays in it.
 
 ### `vidfix variants` — variant grids in parallel
 

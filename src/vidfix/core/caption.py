@@ -13,12 +13,21 @@ from vidfix.core.ffmpeg import FFmpegRunner, ProgressCallback, video_codec_args
 from vidfix.core.generate import drawtext_runner, escape_filter_path, find_font
 from vidfix.exceptions import InvalidSpecError
 
-#: Caption placement -> drawtext x/y expressions (centered horizontally).
-POSITIONS: dict[str, str] = {
-    "top": "x=(w-text_w)/2:y=h/20",
-    "center": "x=(w-text_w)/2:y=(h-text_h)/2",
-    "bottom": "x=(w-text_w)/2:y=h-text_h-h/20",
-}
+_X = {"left": "w/20", "center": "(w-text_w)/2", "right": "w-text_w-w/20"}
+_Y = {"top": "h/20", "center": "(h-text_h)/2", "bottom": "h-text_h-h/20"}
+
+
+def _grid() -> dict[str, str]:
+    grid = {}
+    for vname, ye in _Y.items():
+        for hname, xe in _X.items():
+            parts = [p for p in (vname, hname) if p != "center"]
+            name = "-".join(parts) or "center"
+            grid[name] = f"x={xe}:y={ye}"
+    return grid
+
+
+POSITIONS: dict[str, str] = _grid()
 
 
 def caption_filter(

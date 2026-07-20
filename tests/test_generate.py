@@ -42,7 +42,6 @@ class TestTimecodeFilter:
     def test_with_font(self) -> None:
         f = timecode_filter(FPS30, "/fonts/mono.ttf")
         assert "fontfile='/fonts/mono.ttf':" in f
-        # drawtext skips %{...} expansion when timecode= is set, so no text option
         assert "%{" not in f
 
     def test_without_font(self) -> None:
@@ -64,11 +63,11 @@ class TestTimecodeFilter:
     @pytest.mark.parametrize(
         ("fps", "sep"),
         [
-            (Fraction(30000, 1001), "\\;"),  # NTSC 29.97 defaults to drop-frame
-            (Fraction(60000, 1001), "\\;"),  # NTSC 59.94 defaults to drop-frame
-            (Fraction(25), "\\:"),  # PAL
-            (Fraction(30), "\\:"),  # exact integer rates are never drop-frame
-            (Fraction(24000, 1001), "\\:"),  # 23.976 has no drop-frame timecode
+            (Fraction(30000, 1001), "\\;"),
+            (Fraction(60000, 1001), "\\;"),
+            (Fraction(25), "\\:"),
+            (Fraction(30), "\\:"),
+            (Fraction(24000, 1001), "\\:"),
         ],
     )
     def test_auto_detect(self, fps: Fraction, sep: str) -> None:
@@ -101,6 +100,11 @@ class TestBuildGenerateArgs:
         args = build_generate_args("out.webm", FPS30, 5.0, RES, codec="vp9")
         assert "libopus" in args
         assert "libvpx-vp9" in args
+
+    def test_codec_defaults_to_container(self) -> None:
+        assert "libvpx-vp9" in build_generate_args("out.webm", FPS30, 5.0, RES)
+        assert "libtheora" in build_generate_args("out.ogv", FPS30, 5.0, RES)
+        assert "mpeg2video" in build_generate_args("out.mxf", FPS30, 5.0, RES)
 
     def test_timecode_adds_drawtext(self) -> None:
         args = build_generate_args("out.mp4", FPS30, 5.0, RES, timecode=True)

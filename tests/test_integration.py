@@ -217,6 +217,411 @@ class TestVerifyCli:
         assert result.exit_code == 1
 
 
+VIDEO_CONTAINERS = ["mp4", "mov", "mkv", "avi", "webm", "mxf", "mpg", "ogv", "flv", "wmv", "3gp"]
+EXPECTED_VIDEO_CODEC = {
+    "mp4": "h264", "mov": "h264", "mkv": "h264", "avi": "h264",
+    "flv": "h264", "wmv": "h264", "3gp": "h264",
+    "webm": "vp9", "mxf": "mpeg2video", "mpg": "mpeg2video", "ogv": "theora",
+}  # fmt: skip
+
+PICTURE_FORMATS = ["png", "jpg", "jpeg", "webp", "bmp", "tiff"]
+EXPECTED_IMAGE_CODEC = {
+    "png": "png", "jpg": "mjpeg", "jpeg": "mjpeg", "webp": "webp", "bmp": "bmp", "tiff": "tiff",
+}  # fmt: skip
+
+
+def _run_cli(args: list[str]) -> None:
+    """Invoke the real ``vidfix`` CLI command (real FFmpeg); assert it succeeds."""
+    from typer.testing import CliRunner
+
+    from vidfix.cli import app
+
+    result = CliRunner().invoke(app, args)
+    assert result.exit_code == 0, f"{' '.join(args)} failed:\n{result.output}"
+
+
+@pytest.fixture(scope="module")
+def video_sources(tmp_path_factory: pytest.TempPathFactory) -> dict[str, Path]:
+    """One tiny real clip per container, generated once for the convert matrix."""
+    root = tmp_path_factory.mktemp("vsrc")
+    clips: dict[str, Path] = {}
+    for ext in VIDEO_CONTAINERS:
+        out = root / f"src.{ext}"
+        _run_cli(["generate", "-o", str(out), "--duration", "0.5", "--res", "160x120"])
+        clips[ext] = out
+    return clips
+
+
+@pytest.fixture(scope="module")
+def picture_sources(tmp_path_factory: pytest.TempPathFactory) -> dict[str, Path]:
+    """One real still per picture format, generated once for the format matrix."""
+    root = tmp_path_factory.mktemp("psrc")
+    pics: dict[str, Path] = {}
+    for ext in PICTURE_FORMATS:
+        out = root / f"src.{ext}"
+        _run_cli(["generate", "-o", str(out), "--res", "160x120"])
+        pics[ext] = out
+    return pics
+
+
+class TestGenerateEveryFileType:
+    """`vidfix generate` writes every container and picture format, with a valid codec."""
+
+    @pytest.mark.parametrize("ext", VIDEO_CONTAINERS)
+    def test_generate_video_container(self, tmp_path: Path, ext: str) -> None:
+        out = tmp_path / f"gen.{ext}"
+        _run_cli(["generate", "-o", str(out), "--duration", "0.5", "--res", "160x120"])
+        info = probe(out)
+        assert (info.width, info.height) == (160, 120)
+        assert info.video_codec == EXPECTED_VIDEO_CODEC[ext]
+        assert info.audio is not None
+
+    @pytest.mark.parametrize("ext", PICTURE_FORMATS)
+    def test_generate_picture(self, tmp_path: Path, ext: str) -> None:
+        out = tmp_path / f"pic.{ext}"
+        _run_cli(["generate", "-o", str(out), "--res", "160x120"])
+        info = probe(out)
+        assert (info.width, info.height) == (160, 120)
+        assert info.video_codec == EXPECTED_IMAGE_CODEC[ext]
+        assert info.duration == 0.0
+
+
+class TestConvertEveryCombination:
+    """`vidfix convert` from every container to every container: the full matrix.
+
+    The target container must always get a codec that plays in it, regardless of
+    what the source was.
+    """
+
+    @pytest.mark.parametrize("dst", VIDEO_CONTAINERS)
+    @pytest.mark.parametrize("src", VIDEO_CONTAINERS)
+    def test_convert_container_matrix(
+        self, video_sources: dict[str, Path], tmp_path: Path, src: str, dst: str
+    ) -> None:
+        out = tmp_path / f"{src}_to.{dst}"
+        _run_cli(["convert", str(video_sources[src]), "-o", str(out)])
+        info = probe(out)
+        assert info.video_codec == EXPECTED_VIDEO_CODEC[dst]
+        assert (info.width, info.height) == (160, 120)
+
+
+class TestFormatEveryPictureCombination:
+    """`vidfix format` from every picture format to every picture format."""
+
+    @pytest.mark.parametrize("dst", PICTURE_FORMATS)
+    @pytest.mark.parametrize("src", PICTURE_FORMATS)
+    def test_format_picture_matrix(
+        self, picture_sources: dict[str, Path], tmp_path: Path, src: str, dst: str
+    ) -> None:
+        out = tmp_path / f"{src}_to.{dst}"
+        _run_cli(["format", str(picture_sources[src]), "-o", str(out)])
+        info = probe(out)
+        assert (info.width, info.height) == (160, 120)
+        assert info.video_codec == EXPECTED_IMAGE_CODEC[dst]
+
+
+ALL_CODECS = ["h264", "h265", "prores", "vp9", "mpeg2", "theora"]
+LAYOUTS = ["mono", "stereo", "5.1", "7.1", "left", "right"]
+
+
+def _expected_channels(layout: str) -> int:
+    from vidfix.core.generate import AUDIO_LAYOUTS
+
+    return AUDIO_LAYOUTS.get(layout, 2)
+
+
+class TestGenerateContainerCodecMatrix:
+    """Every container x every codec: a compatible pair yields a real decodable
+    stream; an incompatible one fails cleanly (friendly error) — never exit 0
+    with a broken file, never a raw FFmpeg dump."""
+
+    @pytest.mark.parametrize("codec", ALL_CODECS)
+    @pytest.mark.parametrize("ext", VIDEO_CONTAINERS)
+    def test_codec_in_container(self, tmp_path: Path, ext: str, codec: str) -> None:
+        from vidfix.core.capabilities import allowed_codecs
+        from vidfix.core.ffmpeg import CODEC_PROBE_NAMES
+        from vidfix.exceptions import InvalidSpecError
+
+        out = tmp_path / f"{codec}.{ext}"
+        allowed = allowed_codecs(str(out))
+        if allowed is not None and codec not in allowed:
+            with pytest.raises(InvalidSpecError, match="can't hold"):
+                generate(out, duration="0.5", res="160x120", codec=codec, audio="none")
+            return
+        generate(out, duration="0.5", res="160x120", codec=codec, audio="none")
+        assert probe(out).video_codec == CODEC_PROBE_NAMES[codec]
+
+
+class TestGenerateContainerLayoutMatrix:
+    """Every container x every audio layout: layouts that fit produce the right
+    channel count; layouts past the container's cap fail cleanly."""
+
+    @pytest.mark.parametrize("layout", LAYOUTS)
+    @pytest.mark.parametrize("ext", VIDEO_CONTAINERS)
+    def test_layout_in_container(self, tmp_path: Path, ext: str, layout: str) -> None:
+        from vidfix.core.capabilities import max_channels
+        from vidfix.exceptions import InvalidSpecError
+
+        out = tmp_path / f"{layout}.{ext}"
+        want = _expected_channels(layout)
+        cap = max_channels(str(out))
+        if cap is not None and want > cap:
+            with pytest.raises(InvalidSpecError, match="at most"):
+                generate(out, duration="0.5", res="160x120", layout=layout)
+            return
+        generate(out, duration="0.5", res="160x120", layout=layout)
+        info = probe(out)
+        assert info.audio is not None
+        assert info.audio.channels == want
+
+
+class TestAudioOnlyLayoutCaps:
+    """Audio-only outputs honour their codec's channel ceiling."""
+
+    @pytest.mark.parametrize("layout", LAYOUTS)
+    @pytest.mark.parametrize("ext", ["wav", "mp3", "m4a", "flac"])
+    def test_audio_only_layout(self, tmp_path: Path, ext: str, layout: str) -> None:
+        from vidfix.core.capabilities import max_channels
+        from vidfix.exceptions import InvalidSpecError
+
+        out = tmp_path / f"tone.{ext}"
+        want = _expected_channels(layout)
+        cap = max_channels(str(out))
+        if cap is not None and want > cap:
+            with pytest.raises(InvalidSpecError, match="at most"):
+                generate(out, duration="0.5", layout=layout)
+            return
+        generate(out, duration="0.5", layout=layout)
+        info = probe(out)
+        assert info.audio is not None
+        assert info.audio.channels == want
+
+
+class TestCaptionAcrossCommands:
+    """Captions and timecode work in generate AND convert, at any grid position."""
+
+    def _need_drawtext(self) -> None:
+        from vidfix.core.generate import drawtext_available
+
+        if not drawtext_available():
+            pytest.skip("no drawtext-capable FFmpeg on this machine")
+
+    @pytest.mark.parametrize("position", ["top-left", "center", "bottom-right"])
+    def test_generate_caption_position(self, tmp_path: Path, position: str) -> None:
+        self._need_drawtext()
+        out = tmp_path / "cap.mp4"
+        _run_cli(
+            ["generate", "-o", str(out), "--duration", "0.6", "--res", "160x120",
+             "--audio", "none", "--text", "HI", "--position", position, "--color", "yellow"],
+        )  # fmt: skip
+        assert probe(out).duration == pytest.approx(0.6, abs=0.2)
+
+    def test_convert_caption(self, tiny_clip: Path, tmp_path: Path) -> None:
+        self._need_drawtext()
+        out = tmp_path / "c.mp4"
+        _run_cli(
+            ["convert", str(tiny_clip), "-o", str(out), "--text", "SUB",
+             "--position", "top", "--start", "0.1", "--end", "0.5"],
+        )  # fmt: skip
+        assert probe(out).duration == pytest.approx(1.0, abs=0.2)
+
+    def test_convert_timecode_uses_source_fps(self, tiny_clip: Path, tmp_path: Path) -> None:
+        self._need_drawtext()
+        out = tmp_path / "tc.mp4"
+        _run_cli(["convert", str(tiny_clip), "-o", str(out), "--timecode"])
+        assert probe(out).duration == pytest.approx(1.0, abs=0.2)
+
+    def test_convert_caption_and_timecode_with_fps(self, tiny_clip: Path, tmp_path: Path) -> None:
+        self._need_drawtext()
+        out = tmp_path / "both.mp4"
+        _run_cli(
+            ["convert", str(tiny_clip), "-o", str(out), "--text", "T",
+             "--position", "top-right", "--timecode", "--fps", "25"],
+        )  # fmt: skip
+        assert probe(out).fps == "25"
+
+
+class TestConvertAudioTypes:
+    """`convert --audio` mirrors generate's audio types on an existing clip."""
+
+    def test_keep_source_audio(self, tiny_clip: Path, tmp_path: Path) -> None:
+        out = tmp_path / "keep.mp4"
+        _run_cli(["convert", str(tiny_clip), "-o", str(out), "--audio", "keep", "--fps", "20"])
+        assert probe(out).audio is not None
+
+    def test_replace_with_tone(self, tiny_clip: Path, tmp_path: Path) -> None:
+        out = tmp_path / "tone.mp4"
+        _run_cli(["convert", str(tiny_clip), "-o", str(out), "--audio", "tone"])
+        assert probe(out).audio is not None
+
+    def test_replace_with_silence(self, tiny_clip: Path, tmp_path: Path) -> None:
+        out = tmp_path / "sil.mp4"
+        _run_cli(["convert", str(tiny_clip), "-o", str(out), "--audio", "silence"])
+        info = probe(out)
+        assert info.audio is not None
+        assert info.duration == pytest.approx(1.0, abs=0.2)
+
+    def test_drop_audio(self, tiny_clip: Path, tmp_path: Path) -> None:
+        out = tmp_path / "none.mp4"
+        _run_cli(["convert", str(tiny_clip), "-o", str(out), "--audio", "none"])
+        assert probe(out).audio is None
+
+    def test_legacy_no_audio_alias(self, tiny_clip: Path, tmp_path: Path) -> None:
+        out = tmp_path / "legacy.mp4"
+        _run_cli(["convert", str(tiny_clip), "-o", str(out), "--no-audio"])
+        assert probe(out).audio is None
+
+
+EXTRACT_VIDEO = ["mp4", "mkv", "webm", "mov", "avi", "mxf", "mpg", "ogv", "flv", "3gp"]
+AUDIO_OUT = ["wav", "mp3", "m4a", "flac"]
+H264_BOXES = ["mp4", "mov", "mkv", "avi", "ts", "flv", "wmv", "mpg", "3gp", "mxf"]
+
+
+def _has_subtitle(path: Path) -> bool:
+    from vidfix.core.ffmpeg import FFmpegRunner
+
+    return "Subtitle" in FFmpegRunner().run(["-i", str(path)], check=False).stderr
+
+
+@pytest.fixture(scope="module")
+def extract_sources(tmp_path_factory: pytest.TempPathFactory) -> dict[str, Path]:
+    root = tmp_path_factory.mktemp("extract")
+    out: dict[str, Path] = {}
+    for ext in EXTRACT_VIDEO:
+        p = root / f"s.{ext}"
+        generate(p, duration="0.6", res="160x120")
+        out[ext] = p
+    return out
+
+
+class TestExtractAudioMatrix:
+    """`format` extracts audio from every video container into every audio format."""
+
+    @pytest.mark.parametrize("aext", AUDIO_OUT)
+    @pytest.mark.parametrize("vext", EXTRACT_VIDEO)
+    def test_extract(
+        self, extract_sources: dict[str, Path], tmp_path: Path, vext: str, aext: str
+    ) -> None:
+        from vidfix import to_format
+
+        out = tmp_path / f"{vext}.{aext}"
+        to_format(extract_sources[vext], out)
+        assert probe(out).audio is not None
+
+    def test_no_audio_source_friendly(self, tmp_path: Path) -> None:
+        from vidfix import to_format
+        from vidfix.exceptions import InvalidSpecError
+
+        mute = tmp_path / "mute.mp4"
+        generate(mute, duration="0.5", res="160x120", audio="none")
+        with pytest.raises(InvalidSpecError, match="no audio track"):
+            to_format(mute, tmp_path / "out.mp3")
+
+
+class TestAttach:
+    """Mux external audio / subtitles onto a video, across combinations."""
+
+    def _srt(self, tmp_path: Path) -> Path:
+        srt = tmp_path / "s.srt"
+        srt.write_text("1\n00:00:00,000 --> 00:00:00,800\nHello\n", encoding="utf-8")
+        return srt
+
+    @pytest.mark.parametrize("ext", H264_BOXES)
+    def test_attach_audio_matrix(self, tmp_path: Path, ext: str) -> None:
+        from vidfix import attach
+
+        base = tmp_path / "base.mp4"
+        generate(base, duration="1", res="160x120", audio="none")
+        aud = tmp_path / "a.m4a"
+        generate(aud, duration="1")
+        out = tmp_path / f"o.{ext}"
+        attach(base, out, audio=aud)
+        assert probe(out).audio is not None
+
+    def test_attach_audio_incompatible_container(self, tmp_path: Path) -> None:
+        from vidfix import attach
+        from vidfix.exceptions import InvalidSpecError
+
+        base = tmp_path / "base.mp4"  # h264
+        generate(base, duration="1", res="160x120")
+        aud = tmp_path / "a.m4a"
+        generate(aud, duration="1")
+        with pytest.raises(InvalidSpecError, match="can't hold"):
+            attach(base, tmp_path / "o.webm", audio=aud)  # h264 can't be copied into webm
+
+    @pytest.mark.parametrize("ext", ["mp4", "mov", "mkv"])
+    def test_soft_subs(self, tmp_path: Path, ext: str) -> None:
+        from vidfix import attach
+
+        base = tmp_path / "base.mp4"
+        generate(base, duration="1", res="160x120")
+        out = tmp_path / f"o.{ext}"
+        attach(base, out, subs=self._srt(tmp_path))
+        assert _has_subtitle(out)
+
+    def test_soft_subs_unsupported_container(self, tmp_path: Path) -> None:
+        from vidfix import attach
+        from vidfix.exceptions import InvalidSpecError
+
+        base = tmp_path / "base.mp4"
+        generate(base, duration="1", res="160x120")
+        with pytest.raises(InvalidSpecError, match="soft subtitle"):
+            attach(base, tmp_path / "o.avi", subs=self._srt(tmp_path))
+
+    def test_burn_subs(self, tmp_path: Path) -> None:
+        from vidfix import attach
+        from vidfix.core.generate import drawtext_available
+
+        if not drawtext_available():
+            pytest.skip("no drawtext/subtitles-capable FFmpeg on this machine")
+        base = tmp_path / "base.mp4"
+        generate(base, duration="1", res="160x120")
+        out = tmp_path / "burn.mp4"
+        attach(base, out, subs=self._srt(tmp_path), burn=True)
+        assert probe(out).duration == pytest.approx(1.0, abs=0.2)
+
+    def test_audio_and_soft_subs(self, tmp_path: Path) -> None:
+        from vidfix import attach
+
+        base = tmp_path / "base.mp4"
+        generate(base, duration="1", res="160x120", audio="none")
+        aud = tmp_path / "a.m4a"
+        generate(aud, duration="1")
+        out = tmp_path / "both.mkv"
+        attach(base, out, audio=aud, subs=self._srt(tmp_path))
+        assert probe(out).audio is not None
+        assert _has_subtitle(out)
+
+    def test_cli_attach_and_extract(self, tmp_path: Path) -> None:
+        base = tmp_path / "base.mp4"
+        generate(base, duration="1", res="160x120")
+        aud = tmp_path / "a.m4a"
+        generate(aud, duration="1")
+        out = tmp_path / "o.mp4"
+        _run_cli(["attach", str(base), "--audio", str(aud), "-o", str(out)])
+        assert probe(out).audio is not None
+        song = tmp_path / "song.mp3"
+        _run_cli(["format", str(base), "-o", str(song)])
+        assert probe(song).audio is not None
+
+
+class TestMxfFrameRate:
+    """MXF is broadcast-only: non-standard rates fail cleanly, standard ones work."""
+
+    @pytest.mark.parametrize("fps", ["15", "12", "20"])
+    def test_non_broadcast_rejected(self, tmp_path: Path, fps: str) -> None:
+        from vidfix.exceptions import InvalidSpecError
+
+        with pytest.raises(InvalidSpecError, match="broadcast frame rate"):
+            generate(tmp_path / "bad.mxf", fps=fps, duration="0.5", res="160x120", audio="none")
+
+    @pytest.mark.parametrize("fps", ["25", "30", "50"])
+    def test_broadcast_accepted(self, tmp_path: Path, fps: str) -> None:
+        out = tmp_path / "ok.mxf"
+        generate(out, fps=fps, duration="0.5", res="160x120", audio="none")
+        assert probe(out).video_codec == "mpeg2video"
+
+
 class TestAudioAndPictureGeneration:
     def test_audio_only_wav(self, tmp_path: Path) -> None:
         out = tmp_path / "tone.wav"

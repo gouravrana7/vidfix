@@ -5,6 +5,51 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-07-20
+
+### Fixed
+
+- `generate` and `convert` now produce every container, not just codecs that
+  happen to mux in `.mp4`. The output extension picks a codec that actually
+  plays in it — `.webm`→VP9/Opus, `.ogv`→Theora/Vorbis, `.mpg`→MPEG-2/AC-3,
+  `.mxf`→MPEG-2/48 kHz PCM — so writing `-o clip.webm`/`.mxf`/`.ogv`/`.mpg`
+  succeeds instead of failing with a raw FFmpeg error. Pass `--codec` to
+  override.
+- Impossible format/spec combinations now fail with a clear message instead of
+  a cryptic FFmpeg dump — or, in one case, a silently broken file. Covered:
+  a codec the container can't hold (e.g. `--codec h264` into `.webm`, or
+  h265/ProRes into `.wmv`, which used to write an undecodable video stream);
+  a surround layout past the format's ceiling (`.mp3`/`.mpg` are stereo/5.1
+  bound); and a non-broadcast frame rate for `.mxf`.
+
+### Added
+
+- New `vidfix attach` command — mux an existing audio file and/or a subtitle
+  file (.srt/.vtt) onto a video. Subtitles go in as a soft (toggle-able) track
+  by default, or `--burn` them into the picture. The video is stream-copied
+  (no quality loss) unless subtitles are burned in.
+- `vidfix format` now extracts audio: give it a video input and a `.wav`/`.mp3`/
+  `.m4a`/`.flac` output to pull the audio track out.
+- Every command that writes a file now prints its full saved location.
+- `convert` gained a unified `--audio keep|tone|silence|none`, matching
+  `generate`'s audio types (silence-replacement is new). The old
+  `--no-audio`/`--audio-tone` flags still work as aliases, and the wizard now
+  asks the audio type when converting.
+- Captions are no longer locked to the `caption` command: `generate` and
+  `convert` gained the full caption suite (`--text`, `--position`, `--size`,
+  `--color`, `--start`, `--end`), and `convert` also gained `--timecode`.
+- Caption placement is now a 3×3 grid — `top-left`, `top`, `top-right`, `left`,
+  `center`, `right`, `bottom-left`, `bottom`, `bottom-right` — everywhere a
+  caption can be drawn.
+- The wizard asks caption placement and colour whenever you add text, and its
+  `variants` prompt now makes clear the shown values are editable examples.
+- `mpeg2` and `theora` codecs; `format` accepts `.mxf`, `.mpg`, `.mpeg`,
+  `.ogv`, `.flv`, `.wmv`, `.3gp` as targets.
+- The wizard now offers only what the chosen output format can make: the codec
+  list, audio-channel choices, and frame rate are limited to the container's
+  real capabilities (with a note about what's left out), and the convert codec
+  prompt gains an `auto` default that lets the container decide.
+
 ## [0.2.1] - 2026-07-20
 
 ### Changed

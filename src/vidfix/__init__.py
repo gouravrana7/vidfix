@@ -1,5 +1,6 @@
 """vidfix: exact-spec media toolkit."""
 
+from vidfix.core.attach import attach
 from vidfix.core.caption import caption
 from vidfix.core.convert import ConvertPlan, convert
 from vidfix.core.formats import to_format
@@ -15,7 +16,7 @@ from vidfix.exceptions import (
     VidfixError,
 )
 
-__version__ = "0.1.2"
+__version__ = "0.3.0"
 
 __all__ = [
     "AudioInfo",
@@ -29,6 +30,7 @@ __all__ = [
     "PropertyCheck",
     "VerifyResult",
     "VidfixError",
+    "attach",
     "caption",
     "convert",
     "generate",

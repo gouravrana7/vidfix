@@ -9,6 +9,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
+from vidfix.core import attach as attach_mod
 from vidfix.core import caption as caption_mod
 from vidfix.core import convert as convert_mod
 from vidfix.core import formats as formats_mod
@@ -47,7 +48,11 @@ def _fail(error: Exception) -> NoReturn:
     raise typer.Exit(code=1)
 
 
-# Plain-language names for the color formats people actually meet.
+def _wrote(path: Path, note: str = "") -> None:
+    console.print(f"[green]✓[/green] wrote {path}{note}")
+    console.print(f"  [dim]location:[/dim] {path.resolve()}")
+
+
 _PIX_FMT_NAMES = {
     "yuv420p": "standard",
     "yuv420p10le": "10-bit",
@@ -55,7 +60,6 @@ _PIX_FMT_NAMES = {
     "yuv444p": "full color",
 }
 
-# Plain-language names for the audio sample rates people actually meet.
 _SAMPLE_RATE_NAMES = {
     8000: "low quality",
     22050: "low quality",
@@ -65,7 +69,6 @@ _SAMPLE_RATE_NAMES = {
     192000: "high quality",
 }
 
-# Plain-language names for audio channel counts.
 _CHANNEL_NAMES = {
     1: "mono",
     2: "stereo (left+right)",
@@ -158,7 +161,10 @@ def generate(
         typer.Option(help="Test pattern: smpte, color-bars, testsrc, gradient, or solid:COLOR."),
     ] = "smpte",
     codec: Annotated[
-        str | None, typer.Option(help="Video codec: h264, h265, prores, vp9. Default h264.")
+        str | None,
+        typer.Option(
+            help="Video codec: h264, h265, prores, vp9, mpeg2, theora. Default fits the container."
+        ),
     ] = None,
     audio: Annotated[str, typer.Option(help="Audio track: tone (440Hz), silence, none.")] = "tone",
     audio_layout: Annotated[
@@ -175,6 +181,20 @@ def generate(
     text: Annotated[
         str | None, typer.Option("--text", help="Burn a caption into the video.")
     ] = None,
+    position: Annotated[
+        str,
+        typer.Option(help="Caption placement: top/center/bottom, optionally -left/-right."),
+    ] = "bottom",
+    size: Annotated[
+        str, typer.Option(help="Caption font size (pixels or expression like 'h/12').")
+    ] = "h/12",
+    color: Annotated[
+        str, typer.Option(help="Caption font color, e.g. white, yellow, #ff0000.")
+    ] = "white",
+    start: Annotated[
+        float | None, typer.Option(help="Show caption from this second onward.")
+    ] = None,
+    end: Annotated[float | None, typer.Option(help="Hide caption after this second.")] = None,
     preset: Annotated[
         str | None, typer.Option(help="Preset name for defaults ('vidfix preset list').")
     ] = None,
@@ -185,8 +205,6 @@ def generate(
         total = parse_duration(merged.get("duration") or "5s")
         drop_frame = {"df": True, "ndf": False}.get(merged.get("timecode") or "")
         if fps is not None:
-            # Explicit --fps beats the preset, so its df/ndf counting hint no
-            # longer applies; let the timecode follow the real rate instead.
             drop_frame = None
         with _ProgressBar(f"generate {output.name}", total) as on_progress:
             generate_mod.generate(
@@ -195,17 +213,22 @@ def generate(
                 duration=merged.get("duration") or "5s",
                 res=merged.get("res") or "1280x720",
                 pattern=pattern,
-                codec=merged.get("codec") or "h264",
+                codec=merged.get("codec"),
                 audio=audio,
                 layout=audio_layout,
                 timecode=timecode,
                 drop_frame=drop_frame,
                 text=text,
+                position=position,
+                size=size,
+                color=color,
+                start=start,
+                end=end,
                 on_progress=on_progress,
             )
     except VidfixError as exc:
         _fail(exc)
-    console.print(f"[green]✓[/green] wrote {output}")
+    _wrote(output)
 
 
 @app.command(
@@ -221,7 +244,8 @@ def caption(
     output: Annotated[Path, typer.Option("-o", "--output", help="Output file path.")],
     text: Annotated[str, typer.Option("--text", help="Caption text to burn in.")],
     position: Annotated[
-        str, typer.Option(help="Caption placement: top, center, bottom.")
+        str,
+        typer.Option(help="Caption placement: top/center/bottom, optionally -left/-right."),
     ] = "bottom",
     size: Annotated[
         str, typer.Option(help="Font size (pixels or expression like 'h/12').")
@@ -249,7 +273,41 @@ def caption(
             )
     except VidfixError as exc:
         _fail(exc)
-    console.print(f"[green]✓[/green] wrote {output}")
+    _wrote(output)
+
+
+@app.command(
+    epilog=(
+        "Examples:\n\n"
+        "  vidfix attach clip.mp4 --audio track.m4a -o out.mp4        (mux in an audio track)\n\n"
+        "  vidfix attach clip.mp4 --subs subs.srt -o out.mkv          (soft subtitle track)\n\n"
+        "  vidfix attach clip.mp4 --subs subs.srt --burn -o out.mp4   (burn subs in)\n\n"
+        "  vidfix attach clip.mp4 --audio track.m4a --subs subs.srt -o out.mkv"
+    )
+)
+def attach(
+    input: Annotated[Path, typer.Argument(help="Base video file.")],
+    output: Annotated[Path, typer.Option("-o", "--output", help="Output file path.")],
+    audio: Annotated[
+        Path | None, typer.Option("--audio", help="Audio file to mux onto the video.")
+    ] = None,
+    subs: Annotated[
+        Path | None, typer.Option("--subs", help="Subtitle file (.srt/.vtt) to add.")
+    ] = None,
+    burn: Annotated[
+        bool, typer.Option("--burn", help="Burn subtitles into the picture (else a soft track).")
+    ] = False,
+) -> None:
+    """Attach an existing audio track and/or subtitle onto a video."""
+    try:
+        total = probe_mod.probe(input).duration
+        with _ProgressBar(f"attach {output.name}", total) as on_progress:
+            attach_mod.attach(
+                input, output, audio=audio, subs=subs, burn=burn, on_progress=on_progress
+            )
+    except VidfixError as exc:
+        _fail(exc)
+    _wrote(output)
 
 
 @app.command(
@@ -276,7 +334,10 @@ def convert(
         str | None, typer.Option(help="Target resolution: '1280x720', '720p', '4k'.")
     ] = None,
     codec: Annotated[
-        str | None, typer.Option(help="Video codec: h264, h265, prores, vp9. Default h264.")
+        str | None,
+        typer.Option(
+            help="Video codec: h264, h265, prores, vp9, mpeg2, theora. Default fits the container."
+        ),
     ] = None,
     preset: Annotated[
         str | None, typer.Option(help="Preset name for defaults ('vidfix preset list').")
@@ -291,9 +352,17 @@ def convert(
     stretch: Annotated[
         bool, typer.Option("--stretch", help="Stretch to target resolution (no pad bars).")
     ] = False,
-    no_audio: Annotated[bool, typer.Option("--no-audio", help="Drop the audio track.")] = False,
+    audio: Annotated[
+        str,
+        typer.Option(
+            help="Audio track: keep (source), tone (440Hz), silence, none.",
+        ),
+    ] = "keep",
+    no_audio: Annotated[
+        bool, typer.Option("--no-audio", hidden=True, help="Alias for --audio none.")
+    ] = False,
     audio_tone: Annotated[
-        bool, typer.Option("--audio-tone", help="Replace audio with a 440Hz test tone.")
+        bool, typer.Option("--audio-tone", hidden=True, help="Alias for --audio tone.")
     ] = False,
     audio_layout: Annotated[
         str | None,
@@ -305,9 +374,31 @@ def convert(
     precise: Annotated[
         bool, typer.Option("--precise", help="Force re-encode for frame-accurate trims.")
     ] = False,
+    text: Annotated[
+        str | None, typer.Option("--text", help="Burn a caption into the video.")
+    ] = None,
+    position: Annotated[
+        str,
+        typer.Option(help="Caption placement: top/center/bottom, optionally -left/-right."),
+    ] = "bottom",
+    size: Annotated[
+        str, typer.Option(help="Caption font size (pixels or expression like 'h/12').")
+    ] = "h/12",
+    color: Annotated[
+        str, typer.Option(help="Caption font color, e.g. white, yellow, #ff0000.")
+    ] = "white",
+    start: Annotated[
+        float | None, typer.Option(help="Show caption from this second onward.")
+    ] = None,
+    end: Annotated[float | None, typer.Option(help="Hide caption after this second.")] = None,
+    timecode: Annotated[
+        bool, typer.Option("--timecode", help="Burn in a running timecode.")
+    ] = False,
 ) -> None:
     """Transform an existing video to exact specs (stream-copies when possible)."""
     try:
+        if audio == "keep":
+            audio = "tone" if audio_tone else "none" if no_audio else "keep"
         merged = presets_mod.apply_preset(preset, fps=fps, duration=duration, res=res, codec=codec)
         target_duration = merged.get("duration")
         label = f"convert {output.name}"
@@ -321,14 +412,20 @@ def convert(
                 fps=merged.get("fps"),
                 duration=target_duration,
                 res=merged.get("res"),
-                codec=merged.get("codec") or "h264",
+                codec=merged.get("codec"),
                 smooth=smooth,
                 extend_mode=extend_mode,
                 stretch=stretch,
-                no_audio=no_audio,
-                audio_tone=audio_tone,
+                audio=audio,
                 layout=audio_layout,
                 precise=precise,
+                text=text,
+                position=position,
+                size=size,
+                color=color,
+                start=start,
+                end=end,
+                timecode=timecode,
                 on_progress=on_progress,
             )
     except VidfixError as exc:
@@ -336,7 +433,7 @@ def convert(
     for warning in plan.warnings:
         err_console.print(f"[yellow]warning:[/yellow] {warning}")
     mode = "stream copy" if plan.stream_copy else "re-encode"
-    console.print(f"[green]✓[/green] wrote {output} ({mode})")
+    _wrote(output, f" ({mode})")
 
 
 @app.command(
@@ -368,7 +465,7 @@ def format_cmd(
             formats_mod.to_format(input, output)
     except VidfixError as exc:
         _fail(exc)
-    console.print(f"[green]✓[/green] wrote {output}")
+    _wrote(output)
 
 
 @app.command(
@@ -488,7 +585,7 @@ def probe(
     console.print(table)
 
 
-app.command(name="probe", hidden=True)(probe)  # pre-rename alias
+app.command(name="probe", hidden=True)(probe)
 
 
 @app.command(
@@ -545,11 +642,12 @@ def matrix(
         mark = "[green]OK[/green]" if r.ok else f"[red]FAIL[/red] {r.error}"
         table.add_row(r.job.fps, r.job.res, r.job.output.name, mark)
     console.print(table)
+    console.print(f"  [dim]location:[/dim] {outdir.resolve()}")
     if not all(r.ok for r in results):
         raise typer.Exit(code=1)
 
 
-app.command(name="matrix", hidden=True)(matrix)  # pre-rename alias
+app.command(name="matrix", hidden=True)(matrix)
 
 
 preset_app = typer.Typer(help="Inspect built-in and user presets.", no_args_is_help=True)

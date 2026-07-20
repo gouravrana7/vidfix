@@ -24,7 +24,6 @@ class Resolution(NamedTuple):
         return f"{self.width}x{self.height}"
 
 
-#: Named resolution shortcuts accepted anywhere a resolution is expected.
 NAMED_RESOLUTIONS: dict[str, Resolution] = {
     "240p": Resolution(426, 240),
     "360p": Resolution(640, 360),
@@ -38,7 +37,6 @@ NAMED_RESOLUTIONS: dict[str, Resolution] = {
     "8k": Resolution(7680, 4320),
 }
 
-#: QA-friendly labels for common broadcast rates (preset-family names).
 FPS_LABELS: dict[Fraction, str] = {
     Fraction(24000, 1001): "film23976",
     Fraction(24): "film24",
@@ -48,7 +46,6 @@ FPS_LABELS: dict[Fraction, str] = {
     Fraction(60000, 1001): "df60",
 }
 
-#: Decimal spellings of NTSC drop-frame rates mapped to their exact rationals.
 DROP_FRAME_RATES: dict[str, Fraction] = {
     "23.976": Fraction(24000, 1001),
     "29.97": Fraction(30000, 1001),
@@ -76,7 +73,7 @@ def parse_duration(spec: str | int | float) -> float:
     text = spec.strip().lower()
     if not text:
         raise InvalidSpecError("Duration is empty; expected e.g. '30s', '1:30', or '90'.")
-    if ":" in text:  # tolerate "1:30 mins" — the clock form already encodes the unit
+    if ":" in text:
         text = re.sub(r"\s*(m|mins?|minutes?)$", "", text)
 
     clock = _CLOCK_RE.match(text)

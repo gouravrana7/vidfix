@@ -18,6 +18,7 @@ from vidfix.core.ffmpeg import (
     FFmpegRunner,
     ProgressCallback,
     audio_codec_args,
+    default_codec_for,
     video_codec_args,
 )
 from vidfix.core.generate import AUDIO_LAYOUTS, PAN_LAYOUTS, validate_layout
@@ -25,6 +26,8 @@ from vidfix.core.probe import MediaInfo, probe
 from vidfix.exceptions import InvalidSpecError
 
 EXTEND_MODES = ("freeze", "loop")
+
+AUDIO_CONVERT_MODES = ("keep", "tone", "silence", "none")
 
 
 @dataclass(frozen=True)
@@ -43,22 +46,34 @@ def build_convert_plan(
     fps: Fraction | None = None,
     duration: float | None = None,
     res: Resolution | None = None,
-    codec: str = "h264",
+    codec: str | None = None,
     smooth: bool = False,
     extend_mode: str = "freeze",
     stretch: bool = False,
     no_audio: bool = False,
     audio_tone: bool = False,
+    audio_silence: bool = False,
     layout: str | None = None,
     precise: bool = False,
+    overlay_vf: list[str] | None = None,
 ) -> ConvertPlan:
-    """Pure planner: decide stream-copy vs re-encode and build the argument list."""
+    """Pure planner: decide stream-copy vs re-encode and build the argument list.
+
+    ``overlay_vf`` holds already-built drawtext filters (caption, timecode) to
+    draw over the video; supplying any forces a re-encode.
+    """
+    overlay_vf = overlay_vf or []
     if extend_mode not in EXTEND_MODES:
         raise InvalidSpecError(
             f"Unknown extend mode {extend_mode!r}; expected one of: {EXTEND_MODES}."
         )
-    video_codec_args(codec, output)  # validate codec/container early
-    validate_layout(layout)
+    codec = codec or default_codec_for(output)
+    video_codec_args(codec, output)
+    validate_layout(layout, output)
+    if fps is not None:
+        from vidfix.core.capabilities import validate_fps
+
+        validate_fps(fps, output)
     if layout and no_audio:
         raise InvalidSpecError("--audio-layout conflicts with --no-audio.")
     if layout and source.audio is None and not audio_tone:
@@ -72,7 +87,9 @@ def build_convert_plan(
         and res is None
         and not smooth
         and not audio_tone
+        and not audio_silence
         and layout is None
+        and not overlay_vf
         and duration is not None
         and duration < source.duration
     )
@@ -106,6 +123,8 @@ def build_convert_plan(
             f"sine=frequency=440:sample_rate=44100:duration={tone_duration}",
         ]
         args += ["-map", "0:v", "-map", "1:a"]
+    elif audio_silence:
+        args += ["-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo", "-map", "0:v", "-map", "1:a"]
 
     vf: list[str] = []
     if res is not None:
@@ -124,6 +143,7 @@ def build_convert_plan(
             vf.append(f"fps=fps={rate}")
     if duration is not None and duration > source.duration and extend_mode == "freeze":
         vf.append(f"tpad=stop_mode=clone:stop_duration={duration - source.duration}")
+    vf += overlay_vf
     if vf:
         args += ["-vf", ",".join(vf)]
 
@@ -131,20 +151,22 @@ def build_convert_plan(
 
     if no_audio:
         args.append("-an")
-    elif source.audio is not None or audio_tone:
+    elif source.audio is not None or audio_tone or audio_silence:
         args += audio_codec_args(output)
         if layout in AUDIO_LAYOUTS:
             args += ["-ac", str(AUDIO_LAYOUTS[layout])]
         af: list[str] = []
         if layout in PAN_LAYOUTS:
             af.append(PAN_LAYOUTS[layout])
-        if extending and extend_mode == "freeze" and not audio_tone:
-            af.append("apad")  # pad audio with silence to match the frozen video
+        if extending and extend_mode == "freeze" and not audio_tone and not audio_silence:
+            af.append("apad")
         if af:
             args += ["-af", ",".join(af)]
 
     if duration is not None:
         args += ["-t", f"{duration}"]
+    elif audio_silence:
+        args.append("-shortest")
     args.append(output)
     return ConvertPlan(args=args, stream_copy=False)
 
@@ -155,35 +177,86 @@ def convert(
     fps: str | float | Fraction | None = None,
     duration: str | float | None = None,
     res: str | None = None,
-    codec: str = "h264",
+    codec: str | None = None,
     smooth: bool = False,
     extend_mode: str = "freeze",
     stretch: bool = False,
+    audio: str = "keep",
     no_audio: bool = False,
     audio_tone: bool = False,
     layout: str | None = None,
     precise: bool = False,
+    text: str | None = None,
+    position: str = "bottom",
+    size: str = "h/12",
+    color: str = "white",
+    start: float | None = None,
+    end: float | None = None,
+    timecode: bool = False,
+    drop_frame: bool | None = None,
     runner: FFmpegRunner | None = None,
     on_progress: ProgressCallback | None = None,
 ) -> ConvertPlan:
-    """Convert a video to exact specs; returns the executed plan (with warnings)."""
+    """Convert a video to exact specs; returns the executed plan (with warnings).
+
+    ``audio`` is the unified audio type (keep/tone/silence/none), matching
+    ``generate``; the legacy ``no_audio``/``audio_tone`` flags still work.
+    """
+    from vidfix.core.caption import caption_filter, write_caption_file
+    from vidfix.core.generate import drawtext_runner, find_font, timecode_filter
+
+    if audio not in AUDIO_CONVERT_MODES:
+        raise InvalidSpecError(
+            f"Unknown audio type {audio!r}; expected one of: {AUDIO_CONVERT_MODES}."
+        )
+    no_audio = no_audio or audio == "none"
+    audio_tone = audio_tone or audio == "tone"
+    audio_silence = audio == "silence"
+
     runner = runner or FFmpegRunner()
+    if text or timecode:
+        runner = drawtext_runner(runner)
     source = probe(input_path, runner=runner)
-    plan = build_convert_plan(
-        input_path=str(input_path),
-        output=str(output),
-        source=source,
-        fps=parse_fps(fps) if fps is not None else None,
-        duration=parse_duration(duration) if duration is not None else None,
-        res=parse_resolution(res) if res is not None else None,
-        codec=codec,
-        smooth=smooth,
-        extend_mode=extend_mode,
-        stretch=stretch,
-        no_audio=no_audio,
-        audio_tone=audio_tone,
-        layout=layout,
-        precise=precise,
-    )
-    runner.run(plan.args, on_progress=on_progress)
+
+    parsed_fps = parse_fps(fps) if fps is not None else None
+    textfile = write_caption_file(text) if text else None
+    try:
+        overlay_vf: list[str] = []
+        if timecode:
+            rate = parsed_fps if parsed_fps is not None else Fraction(source.fps)
+            overlay_vf.append(timecode_filter(rate, find_font(), drop_frame))
+        if textfile is not None:
+            overlay_vf.append(
+                caption_filter(
+                    textfile,
+                    position=position,
+                    size=size,
+                    color=color,
+                    font=find_font(),
+                    start=start,
+                    end=end,
+                )
+            )
+        plan = build_convert_plan(
+            input_path=str(input_path),
+            output=str(output),
+            source=source,
+            fps=parsed_fps,
+            duration=parse_duration(duration) if duration is not None else None,
+            res=parse_resolution(res) if res is not None else None,
+            codec=codec,
+            smooth=smooth,
+            extend_mode=extend_mode,
+            stretch=stretch,
+            no_audio=no_audio,
+            audio_tone=audio_tone,
+            audio_silence=audio_silence,
+            layout=layout,
+            precise=precise,
+            overlay_vf=overlay_vf,
+        )
+        runner.run(plan.args, on_progress=on_progress)
+    finally:
+        if textfile is not None:
+            Path(textfile).unlink(missing_ok=True)
     return plan

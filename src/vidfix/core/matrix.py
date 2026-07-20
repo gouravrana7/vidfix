@@ -68,7 +68,7 @@ def run_matrix(
     """Convert all variants in parallel FFmpeg processes; never raises per-variant."""
     planned = plan_matrix(str(input_path), str(outdir), fps_list, res_list)
     Path(outdir).mkdir(parents=True, exist_ok=True)
-    runner = FFmpegRunner()  # shared: binary discovery happens once
+    runner = FFmpegRunner()
 
     def run_one(job: MatrixJob) -> MatrixResult:
         try:

@@ -12,13 +12,12 @@ import subprocess
 import threading
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
+from pathlib import Path
 
 from vidfix.exceptions import ConversionError, FFmpegNotFoundError, InvalidSpecError
 
-#: Flags prepended to every FFmpeg invocation.
 BASE_FLAGS: tuple[str, ...] = ("-hide_banner", "-nostdin", "-y")
 
-#: Supported video codecs mapped to their encoder arguments.
 VIDEO_CODECS: dict[str, tuple[str, ...]] = {
     "h264": ("-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "fast", "-crf", "23"),
     "h265": (
@@ -27,39 +26,64 @@ VIDEO_CODECS: dict[str, tuple[str, ...]] = {
     ),
     "prores": ("-c:v", "prores_ks", "-profile:v", "3", "-pix_fmt", "yuv422p10le"),
     "vp9": ("-c:v", "libvpx-vp9", "-b:v", "0", "-crf", "32", "-pix_fmt", "yuv420p"),
+    "mpeg2": ("-c:v", "mpeg2video", "-pix_fmt", "yuv420p", "-qscale:v", "4"),
+    "theora": ("-c:v", "libtheora", "-q:v", "7"),
 }  # fmt: skip
 
-#: Encoder names as they appear in probe output, keyed by vidfix codec name.
 CODEC_PROBE_NAMES: dict[str, str] = {
     "h264": "h264",
     "h265": "hevc",
     "prores": "prores",
     "vp9": "vp9",
+    "mpeg2": "mpeg2video",
+    "theora": "theora",
 }
+
+CONTAINER_CODECS: dict[str, str] = {
+    ".webm": "vp9",
+    ".ogv": "theora",
+    ".mpg": "mpeg2",
+    ".mpeg": "mpeg2",
+    ".mxf": "mpeg2",
+}
+
+
+def default_codec_for(output: str) -> str:
+    """The video codec that plays in ``output``'s container (h264 for most)."""
+    return CONTAINER_CODECS.get(Path(output).suffix.lower(), "h264")
 
 
 def video_codec_args(codec: str, output: str | None = None) -> list[str]:
     """Encoder arguments for a supported codec name.
 
-    When ``output`` is given, codec/container mismatches FFmpeg would reject
-    (prores has no mp4 tag) fail early with a friendly message.
+    When ``output`` is given, codecs the target container can't hold fail early
+    with a friendly message instead of a cryptic (or silently broken) FFmpeg run.
     """
     if codec not in VIDEO_CODECS:
         supported = ", ".join(sorted(VIDEO_CODECS))
         raise InvalidSpecError(f"Unsupported codec {codec!r}; expected one of: {supported}.")
-    if codec == "prores" and output and output.lower().endswith(".mp4"):
-        raise InvalidSpecError("prores cannot go in an .mp4 file; use a .mov or .mkv output.")
+    if output is not None:
+        from vidfix.core.capabilities import validate_codec
+
+        validate_codec(codec, output)
     return list(VIDEO_CODECS[codec])
+
+
+_CONTAINER_AUDIO: dict[str, list[str]] = {
+    ".webm": ["-c:a", "libopus"],
+    ".ogv": ["-c:a", "libvorbis"],
+    ".mpg": ["-c:a", "ac3"],
+    ".mpeg": ["-c:a", "ac3"],
+    ".mxf": ["-c:a", "pcm_s16le", "-ar", "48000"],
+}
 
 
 def audio_codec_args(output: str) -> list[str]:
     """Audio encoder arguments picked by output container extension."""
-    if output.lower().endswith(".webm"):
-        return ["-c:a", "libopus"]
-    return ["-c:a", "aac", "-b:a", "128k"]
+    return list(_CONTAINER_AUDIO.get(Path(output).suffix.lower(), ["-c:a", "aac", "-b:a", "128k"]))
 
 
-_STDERR_LIMIT = 64_000  # keep only the newest chunk of stderr for error reporting
+_STDERR_LIMIT = 64_000
 
 
 @dataclass(frozen=True)
@@ -90,7 +114,7 @@ def find_ffmpeg() -> str:
         import imageio_ffmpeg
 
         return str(imageio_ffmpeg.get_ffmpeg_exe())
-    except Exception:  # any failure (import, download, permissions) falls through to PATH
+    except Exception:
         system = shutil.which("ffmpeg")
         if system:
             return system
