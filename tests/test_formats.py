@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from vidfix.core.formats import build_format_args, media_kind
+from vidfix.core.formats import VIDEO_EXTS, build_format_args, media_kind, validate_output_ext
 from vidfix.exceptions import InvalidSpecError
 
 
@@ -24,6 +24,19 @@ class TestMediaKind:
     def test_unsupported(self) -> None:
         with pytest.raises(InvalidSpecError, match="Unsupported format"):
             media_kind("doc.pdf")
+
+
+class TestValidateOutputExt:
+    def test_no_extension(self) -> None:
+        with pytest.raises(InvalidSpecError, match="no extension"):
+            validate_output_ext("mxf", VIDEO_EXTS)
+
+    def test_wrong_extension(self) -> None:
+        with pytest.raises(InvalidSpecError, match=r"extension '\.xyz'"):
+            validate_output_ext("out.xyz", VIDEO_EXTS)
+
+    def test_valid_passes(self) -> None:
+        validate_output_ext("out.mkv", VIDEO_EXTS)
 
 
 class TestBuildFormatArgs:
@@ -72,3 +85,25 @@ class TestBuildFormatArgs:
     def test_audio_to_video_rejected(self) -> None:
         with pytest.raises(InvalidSpecError, match="generate"):
             build_format_args("song.mp3", "out.mp4")
+
+
+class TestOutputExtGuards:
+    """Every write command's core entry rejects an extension-less output up front."""
+
+    def test_generate(self) -> None:
+        from vidfix.core.generate import generate
+
+        with pytest.raises(InvalidSpecError, match="no extension"):
+            generate("mxf")
+
+    def test_convert(self) -> None:
+        from vidfix.core.convert import convert
+
+        with pytest.raises(InvalidSpecError, match="no extension"):
+            convert("in.mp4", "mxf")
+
+    def test_caption(self) -> None:
+        from vidfix.core.caption import caption
+
+        with pytest.raises(InvalidSpecError, match="no extension"):
+            caption("in.mp4", "mxf", text="hi")

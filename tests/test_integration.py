@@ -483,6 +483,17 @@ def _has_subtitle(path: Path) -> bool:
     return "Subtitle" in FFmpegRunner().run(["-i", str(path)], check=False).stderr
 
 
+def _decodes(path: Path) -> bool:
+    """True when every stream in the file decodes without error (no silent corruption)."""
+    from vidfix.core.ffmpeg import FFmpegRunner
+
+    result = FFmpegRunner().run(["-v", "error", "-i", str(path), "-f", "null", "-"], check=False)
+    return result.returncode == 0
+
+
+SOFT_SUB_BOXES = ["mp4", "mov", "mkv"]
+
+
 @pytest.fixture(scope="module")
 def extract_sources(tmp_path_factory: pytest.TempPathFactory) -> dict[str, Path]:
     root = tmp_path_factory.mktemp("extract")
@@ -603,6 +614,93 @@ class TestAttach:
         song = tmp_path / "song.mp3"
         _run_cli(["format", str(base), "-o", str(song)])
         assert probe(song).audio is not None
+
+    def _two_audios(self, tmp_path: Path) -> tuple[Path, Path]:
+        a1, a2 = tmp_path / "en.wav", tmp_path / "hi.mp3"
+        generate(a1, duration="1", audio="tone")
+        generate(a2, duration="1", audio="silence")
+        return a1, a2
+
+    def _base(self, tmp_path: Path, audio: str = "none") -> Path:
+        base = tmp_path / "base.mp4"
+        generate(base, duration="1", res="160x120", audio=audio)
+        return base
+
+    @pytest.mark.parametrize("ext", H264_BOXES)
+    def test_two_audio_across_every_container(self, tmp_path: Path, ext: str) -> None:
+        """Every h264 box: two-audio attach either errors friendly or keeps both tracks."""
+        from vidfix import attach
+        from vidfix.exceptions import InvalidSpecError
+
+        a1, a2 = self._two_audios(tmp_path)
+        out = tmp_path / f"multi.{ext}"
+        try:
+            attach(self._base(tmp_path), out, audio=[a1, a2])
+        except InvalidSpecError as exc:
+            assert "audio track" in str(exc)  # single-track container (flv), not a raw dump
+            return
+        assert probe(out).audio_track_count >= 2  # both tracks kept, none silently dropped
+        assert _decodes(out)  # no silent corruption
+
+    @pytest.mark.parametrize("ext", ["mp4", "mkv", "mov"])
+    def test_three_audio_tracks(self, tmp_path: Path, ext: str) -> None:
+        from vidfix import attach
+
+        a1, a2 = self._two_audios(tmp_path)
+        a3 = tmp_path / "fr.wav"
+        generate(a3, duration="1", audio="tone")
+        out = tmp_path / f"three.{ext}"
+        attach(self._base(tmp_path), out, audio=[a1, a2, a3])
+        assert probe(out).audio_track_count >= 3
+        assert _decodes(out)
+
+    def test_two_audios_onto_generated_clip_with_audio(self, tmp_path: Path) -> None:
+        from vidfix import attach
+
+        a1, a2 = self._two_audios(tmp_path)
+        out = tmp_path / "multi.mkv"
+        attach(self._base(tmp_path, audio="tone"), out, audio=[a1, a2])  # source track replaced
+        assert probe(out).audio_track_count == 2
+
+    @pytest.mark.parametrize("ext", SOFT_SUB_BOXES)
+    def test_two_audios_and_soft_subs(self, tmp_path: Path, ext: str) -> None:
+        from vidfix import attach
+
+        a1, a2 = self._two_audios(tmp_path)
+        out = tmp_path / f"both.{ext}"
+        attach(self._base(tmp_path), out, audio=[a1, a2], subs=self._srt(tmp_path))
+        assert probe(out).audio_track_count >= 2
+        assert _has_subtitle(out)
+
+    def test_two_audios_and_burn_subs(self, tmp_path: Path) -> None:
+        from vidfix import attach
+        from vidfix.core.generate import drawtext_available
+
+        if not drawtext_available():
+            pytest.skip("no drawtext/subtitles-capable FFmpeg on this machine")
+        a1, a2 = self._two_audios(tmp_path)
+        out = tmp_path / "burn.mkv"
+        attach(self._base(tmp_path), out, audio=[a1, a2], subs=self._srt(tmp_path), burn=True)
+        assert probe(out).audio_track_count >= 2
+
+    def test_missing_attach_files_friendly(self, tmp_path: Path) -> None:
+        from vidfix import attach
+        from vidfix.exceptions import InvalidSpecError
+
+        base = self._base(tmp_path)
+        with pytest.raises(InvalidSpecError, match="File not found"):
+            attach(base, tmp_path / "o.mp4", audio=tmp_path / "nope.wav")
+        with pytest.raises(InvalidSpecError, match="File not found"):
+            attach(base, tmp_path / "o.mkv", subs=tmp_path / "nope.srt")
+
+    def test_cli_two_audios(self, tmp_path: Path) -> None:
+        a1, a2 = self._two_audios(tmp_path)
+        out = tmp_path / "cli.mkv"
+        _run_cli(
+            ["attach", str(self._base(tmp_path)),
+             "--audio", str(a1), "--audio", str(a2), "-o", str(out)]
+        )  # fmt: skip
+        assert probe(out).audio_track_count >= 2
 
 
 class TestMxfFrameRate:

@@ -63,6 +63,17 @@ class TestParseFfprobeJson:
         assert info.audio.codec == "aac"
         assert info.audio.sample_rate == 44100
         assert info.audio.channels == 2
+        assert info.audio_track_count == 1
+
+    def test_two_audio_tracks(self) -> None:
+        payload = FFPROBE_JSON.replace(
+            '"channels": 2\n        }',
+            '"channels": 2\n        },\n'
+            '        {"codec_type": "audio", "codec_name": "ac3", "channels": 6}',
+        )
+        info = parse_ffprobe_json(payload, "clip.mkv")
+        assert info.audio_track_count == 2
+        assert info.audio is not None and info.audio.codec == "aac"  # first track
 
     def test_no_streams(self) -> None:
         with pytest.raises(ProbeError, match="No media streams"):
@@ -107,6 +118,17 @@ class TestParseFfmpegBanner:
         banner = "\n".join(line for line in FFMPEG_BANNER.splitlines() if "Audio" not in line)
         info = parse_ffmpeg_banner(banner, "clip.mp4")
         assert info.audio is None
+        assert info.audio_track_count == 0
+
+    def test_audio_track_count(self) -> None:
+        info = parse_ffmpeg_banner(FFMPEG_BANNER, "clip.mp4")
+        assert info.audio_track_count == 1
+        two = FFMPEG_BANNER.replace(
+            "At least one output",
+            "  Stream #0:2[0x3](und): Audio: ac3, 44100 Hz, 5.1, fltp, 384 kb/s\n"
+            "At least one output",
+        )
+        assert parse_ffmpeg_banner(two, "clip.mkv").audio_track_count == 2
 
     def test_audio_only(self) -> None:
         banner = "\n".join(line for line in FFMPEG_BANNER.splitlines() if "Video" not in line)

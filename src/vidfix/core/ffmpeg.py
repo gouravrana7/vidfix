@@ -63,6 +63,10 @@ def video_codec_args(codec: str, output: str | None = None) -> list[str]:
         supported = ", ".join(sorted(VIDEO_CODECS))
         raise InvalidSpecError(f"Unsupported codec {codec!r}; expected one of: {supported}.")
     if output is not None:
+        if output.lower().endswith(".gif"):
+            raise InvalidSpecError(
+                "GIF output needs palette conversion; use 'vidfix format <video> -o out.gif'."
+            )
         from vidfix.core.capabilities import validate_codec
 
         validate_codec(codec, output)

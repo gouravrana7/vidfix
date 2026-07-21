@@ -239,9 +239,19 @@ class TestAttachCli:
         )  # fmt: skip
         assert result.exit_code == 0
         assert "wrote out.mkv" in result.output
-        assert str(rec.kwargs["audio"]) == "a.m4a"
+        assert [str(a) for a in rec.kwargs["audio"]] == ["a.m4a"]
         assert str(rec.kwargs["subs"]) == "s.srt"
         assert rec.kwargs["burn"] is True
+
+    def test_multiple_audio_tracks(self, monkeypatch: pytest.MonkeyPatch, fake_probe: None) -> None:
+        rec = Recorder()
+        monkeypatch.setattr(cli.attach_mod, "attach", rec)
+        result = runner.invoke(
+            cli.app,
+            ["attach", "in.mp4", "-o", "out.mkv", "--audio", "en.wav", "--audio", "hi.mp3"],
+        )
+        assert result.exit_code == 0
+        assert [str(a) for a in rec.kwargs["audio"]] == ["en.wav", "hi.mp3"]
 
     def test_error_exits_1(self, monkeypatch: pytest.MonkeyPatch, fake_probe: None) -> None:
         def boom(*args: Any, **kwargs: Any) -> None:
@@ -382,6 +392,18 @@ class TestInfoCli:
         result = runner.invoke(cli.app, ["info", "mute.mp4"])
         assert result.exit_code == 0
         assert "audio" in result.output and "none" in result.output
+
+    def test_multiple_audio_tracks_row(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        info = INFO.model_copy(
+            update={
+                "audio_track_count": 2,
+                "audio": AudioInfo(codec="aac", sample_rate=None, channels=None),
+            }
+        )
+        monkeypatch.setattr(cli.probe_mod, "probe", lambda _: info)
+        result = runner.invoke(cli.app, ["info", "multi.mkv"])
+        assert result.exit_code == 0
+        assert "2 tracks" in result.output
 
     def test_probe_alias_still_works(self, fake_probe: None) -> None:
         result = runner.invoke(cli.app, ["probe", "in.mp4"])

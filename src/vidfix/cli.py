@@ -280,6 +280,7 @@ def caption(
     epilog=(
         "Examples:\n\n"
         "  vidfix attach clip.mp4 --audio track.m4a -o out.mp4        (mux in an audio track)\n\n"
+        "  vidfix attach clip.mp4 --audio en.wav --audio hi.mp3 -o out.mkv  (two audio tracks)\n\n"
         "  vidfix attach clip.mp4 --subs subs.srt -o out.mkv          (soft subtitle track)\n\n"
         "  vidfix attach clip.mp4 --subs subs.srt --burn -o out.mp4   (burn subs in)\n\n"
         "  vidfix attach clip.mp4 --audio track.m4a --subs subs.srt -o out.mkv"
@@ -289,7 +290,8 @@ def attach(
     input: Annotated[Path, typer.Argument(help="Base video file.")],
     output: Annotated[Path, typer.Option("-o", "--output", help="Output file path.")],
     audio: Annotated[
-        Path | None, typer.Option("--audio", help="Audio file to mux onto the video.")
+        list[Path] | None,
+        typer.Option("--audio", help="Audio file to add as a track (repeat for more tracks)."),
     ] = None,
     subs: Annotated[
         Path | None, typer.Option("--subs", help="Subtitle file (.srt/.vtt) to add.")
@@ -579,7 +581,10 @@ def probe(
             if info.audio.channels
             else "?"
         )
-        table.add_row("audio", f"{info.audio.codec} · {channels} · {rate}")
+        row = f"{info.audio.codec} · {channels} · {rate}"
+        if info.audio_track_count > 1:
+            row += f" · {info.audio_track_count} tracks"
+        table.add_row("audio", row)
     else:
         table.add_row("audio", "none")
     console.print(table)

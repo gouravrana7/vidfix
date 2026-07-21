@@ -40,6 +40,10 @@ CONTAINER_MAX_CHANNELS: dict[str, int] = {
 _MXF_FPS = frozenset({23.976, 24.0, 25.0, 29.97, 30.0, 48.0, 50.0, 59.94, 60.0})
 CONTAINER_FPS: dict[str, frozenset[float]] = {".mxf": _MXF_FPS}
 
+CONTAINER_MAX_AUDIO_STREAMS: dict[str, int] = {
+    ".flv": 1,
+}
+
 
 def _ext(output: str) -> str:
     return Path(output).suffix.lower()
@@ -77,6 +81,21 @@ def validate_fps(fps: Fraction, output: str) -> None:
         raise InvalidSpecError(
             f"{_ext(output)} needs a standard broadcast frame rate ({nice}); "
             f"{float(fps):g} isn't one."
+        )
+
+
+def max_audio_streams(output: str) -> int | None:
+    """Highest number of audio tracks the container can hold, or None."""
+    return CONTAINER_MAX_AUDIO_STREAMS.get(_ext(output))
+
+
+def validate_audio_stream_count(count: int, output: str) -> None:
+    """Reject attaching more audio tracks than the container can hold."""
+    cap = max_audio_streams(output)
+    if cap is not None and count > cap:
+        raise InvalidSpecError(
+            f"{_ext(output)} holds at most {cap} audio track(s); you attached {count}. "
+            "Use .mkv/.mp4/.mov."
         )
 
 

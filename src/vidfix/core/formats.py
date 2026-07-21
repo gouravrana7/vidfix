@@ -30,6 +30,17 @@ _GIF_FILTER = (
 )
 
 
+def validate_output_ext(output: str, allowed: set[str], what: str = "output") -> None:
+    """Reject an output whose extension isn't one the command can write."""
+    ext = Path(output).suffix.lower()
+    if ext not in allowed:
+        got = f"extension {ext!r}" if ext else "no extension"
+        raise InvalidSpecError(
+            f"Can't tell the {what} format of {output!r} ({got}); "
+            f"use one of: {', '.join(sorted(e.lstrip('.') for e in allowed))}."
+        )
+
+
 def media_kind(path: str) -> str:
     """Classify a path as 'image', 'audio', or 'video' by extension."""
     ext = Path(path).suffix.lower()

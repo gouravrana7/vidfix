@@ -21,13 +21,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   h265/ProRes into `.wmv`, which used to write an undecodable video stream);
   a surround layout past the format's ceiling (`.mp3`/`.mpg` are stereo/5.1
   bound); and a non-broadcast frame rate for `.mxf`.
+- An output with no (or an unknown) extension — `-o mxf` — now stops up front
+  with one line naming the valid formats, on every write command. In the
+  wizard, answering the output prompt with just a format name (`mxf`) names
+  the file for you; anything unusable re-prompts on the spot.
+- GIF output through `generate`/`convert`/`caption`/`attach` (which would fail
+  raw or make a broken file) now points to `vidfix format`, the command that
+  does palette-correct GIFs. `caption` also picks the codec that fits the
+  output container instead of always h264.
+- A missing `--audio`/`--subs` file on `attach` errors as `File not found: …`
+  instead of an FFmpeg dump.
 
 ### Added
 
-- New `vidfix attach` command — mux an existing audio file and/or a subtitle
+- New `vidfix attach` command — mux existing audio file(s) and/or a subtitle
   file (.srt/.vtt) onto a video. Subtitles go in as a soft (toggle-able) track
   by default, or `--burn` them into the picture. The video is stream-copied
   (no quality loss) unless subtitles are burned in.
+- `attach --audio` can be repeated to add several audio tracks at once
+  (`--audio en.wav --audio hi.mp3`), one output track per file, on any video —
+  your own or a `vidfix generate` clip. Containers that hold a single audio
+  track (`.flv`) say so instead of failing cryptically, and `vidfix info` shows
+  `… · N tracks` when a file carries more than one.
 - `vidfix format` now extracts audio: give it a video input and a `.wav`/`.mp3`/
   `.m4a`/`.flac` output to pull the audio track out.
 - Every command that writes a file now prints its full saved location.
@@ -49,6 +64,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   list, audio-channel choices, and frame rate are limited to the container's
   real capabilities (with a note about what's left out), and the convert codec
   prompt gains an `auto` default that lets the container decide.
+- The wizard's output-file prompt now lists the formats that fit what you're
+  making (`formats: mp4, mov, mkv, mxf, webm, … — pick any`), so every container
+  is discoverable instead of looking mp4-only.
 
 ## [0.2.1] - 2026-07-20
 

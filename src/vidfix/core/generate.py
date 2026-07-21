@@ -249,7 +249,9 @@ def generate(
 ) -> Path:
     """Generate a synthetic test video matching the given specs exactly."""
     from vidfix.core.caption import caption_filter, write_caption_file
+    from vidfix.core.formats import VIDEO_EXTS, validate_output_ext
 
+    validate_output_ext(str(output), VIDEO_EXTS | AUDIO_EXTS | IMAGE_EXTS)
     out = Path(output)
     runner = runner or FFmpegRunner()
     if timecode or text:

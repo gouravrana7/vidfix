@@ -203,8 +203,10 @@ def convert(
     ``generate``; the legacy ``no_audio``/``audio_tone`` flags still work.
     """
     from vidfix.core.caption import caption_filter, write_caption_file
+    from vidfix.core.formats import VIDEO_EXTS, validate_output_ext
     from vidfix.core.generate import drawtext_runner, find_font, timecode_filter
 
+    validate_output_ext(str(output), VIDEO_EXTS)
     if audio not in AUDIO_CONVERT_MODES:
         raise InvalidSpecError(
             f"Unknown audio type {audio!r}; expected one of: {AUDIO_CONVERT_MODES}."

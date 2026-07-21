@@ -32,6 +32,10 @@ class TestVideoCodecArgs:
         assert "mpeg2video" in video_codec_args("mpeg2")
         assert "libtheora" in video_codec_args("theora")
 
+    def test_gif_output_redirects_to_format(self) -> None:
+        with pytest.raises(InvalidSpecError, match="vidfix format"):
+            video_codec_args("h264", "out.gif")
+
 
 class TestDefaultCodecFor:
     @pytest.mark.parametrize(

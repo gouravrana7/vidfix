@@ -18,7 +18,7 @@ from rich.prompt import Confirm, Prompt
 from vidfix.core.capabilities import allowed_codecs, max_channels
 from vidfix.core.caption import POSITIONS
 from vidfix.core.duration import DROP_FRAME_RATES, parse_duration, parse_fps, parse_resolution
-from vidfix.core.formats import IMAGE_EXTS
+from vidfix.core.formats import IMAGE_EXTS, VIDEO_EXTS
 from vidfix.core.generate import AUDIO_EXTENSIONS, AUDIO_LAYOUTS
 from vidfix.core.presets import get_preset, load_presets
 from vidfix.exceptions import VidfixError
@@ -26,6 +26,8 @@ from vidfix.exceptions import VidfixError
 console = Console()
 
 ACTIONS = ("generate", "convert", "caption", "attach", "format", "verify", "info", "variants")
+
+ENCODE_EXTS = VIDEO_EXTS - {".gif"}
 
 AUDIO_CHANNEL_CHOICES = ["mono", "stereo", "5.1", "7.1", "left", "right"]
 
@@ -134,8 +136,19 @@ def ask_file(label: str) -> str:
         console.print(f"[red]File not found: {raw}[/red]")
 
 
-def ask_output(default: str) -> str:
-    return Prompt.ask("Output file", default=default).strip()
+def ask_output(default: str, suggest: set[str] | None = None) -> str:
+    if suggest:
+        formats = ", ".join(sorted(e.lstrip(".") for e in suggest))
+        console.print(f"[dim]formats: {formats} — pick any[/dim]")
+    while True:
+        raw = Prompt.ask("Output file", default=default).strip()
+        if suggest is None:
+            return raw
+        if f".{raw.lower()}" in suggest:
+            return str(Path(default).with_suffix(f".{raw.lower()}"))
+        if Path(raw).suffix.lower() in suggest:
+            return raw
+        console.print("[red]Pick a name ending in one of the formats above (e.g. clip.mp4).[/red]")
 
 
 def ask_preset() -> str | None:
@@ -153,7 +166,9 @@ def _opt(flag: str, value: str | None) -> list[str]:
 
 def convert_flow() -> list[str]:
     source = ask_file("Which file do you want to convert?")
-    output = ask_output(str(Path(source).with_stem(Path(source).stem + "_converted")))
+    output = ask_output(
+        str(Path(source).with_stem(Path(source).stem + "_converted")), suggest=ENCODE_EXTS
+    )
     preset = ask_preset()
     pd = get_preset(preset) if preset else {}
     fps = ask_spec(
@@ -198,20 +213,11 @@ def convert_flow() -> list[str]:
     ]  # fmt: skip
 
 
-def ask_output_ext(default: str, allowed: set[str], kind: str) -> str:
-    """Prompt for an output file until its extension fits the generated media kind."""
-    while True:
-        output = ask_output(default)
-        if Path(output).suffix.lower() in allowed:
-            return output
-        console.print(f"[red]{kind} output needs one of: {', '.join(sorted(allowed))}[/red]")
-
-
 PATTERN_CHOICES = ["smpte", "color-bars", "testsrc", "gradient", "solid:red"]
 
 
 def audio_flow() -> list[str]:
-    output = ask_output_ext("test.wav", set(AUDIO_EXTENSIONS), "Audio-only")
+    output = ask_output("test.wav", suggest=set(AUDIO_EXTENSIONS))
     audio = Prompt.ask("Audio", choices=["tone", "silence"], default="tone")
     layout = Prompt.ask("Audio channels", choices=_layout_choices(output), default="stereo")
     duration = ask_spec("Duration (e.g. 30s, 1min, 1:30)", parse_duration, default="5s")
@@ -225,7 +231,7 @@ def picture_flow() -> list[str]:
     pattern = Prompt.ask("Pattern", choices=PATTERN_CHOICES, default="smpte")
     res = ask_spec("Resolution (e.g. 720p, 1080p, 1280x720)", parse_resolution, default="720p")
     caption = ask_caption_flags()
-    output = ask_output_ext("test.png", IMAGE_EXTS, "Picture")
+    output = ask_output("test.png", suggest=IMAGE_EXTS)
     return [
         "generate", "--pattern", pattern,
         *_opt("--res", res), *caption, "-o", output,
@@ -238,7 +244,7 @@ def generate_flow() -> list[str]:
         return audio_flow()
     if kind == "picture":
         return picture_flow()
-    output = ask_output("test.mp4")
+    output = ask_output("test.mp4", suggest=ENCODE_EXTS)
     pattern = Prompt.ask("Pattern", choices=PATTERN_CHOICES, default="smpte")
     preset = ask_preset()
     pd = get_preset(preset) if preset else {}
@@ -280,7 +286,9 @@ def generate_flow() -> list[str]:
 def caption_flow() -> list[str]:
     source = ask_file("Which video do you want to caption?")
     caption = ask_caption_flags(required=True)
-    output = ask_output(str(Path(source).with_stem(Path(source).stem + "_captioned")))
+    output = ask_output(
+        str(Path(source).with_stem(Path(source).stem + "_captioned")), suggest=ENCODE_EXTS
+    )
     return ["caption", source, *caption, "-o", output]
 
 
@@ -301,13 +309,20 @@ def ask_optional_file(label: str) -> str | None:
 
 def attach_flow() -> list[str]:
     source = ask_file("Which video do you want to attach to?")
-    audio = ask_optional_file("Audio file to add")
+    audios: list[str] = []
+    track = ask_optional_file("Audio file to add")
+    while track:
+        audios.append(track)
+        track = ask_optional_file("Another audio file to add")
     subs = ask_optional_file("Subtitle file (.srt/.vtt) to add")
     burn = Confirm.ask("Burn subtitles into the picture?", default=False) if subs else False
-    output = ask_output(str(Path(source).with_stem(Path(source).stem + "_attached")))
+    output = ask_output(
+        str(Path(source).with_stem(Path(source).stem + "_attached")), suggest=ENCODE_EXTS
+    )
+    audio_flags = [f for a in audios for f in ("--audio", a)]
     return [
         "attach", source,
-        *_opt("--audio", audio), *_opt("--subs", subs),
+        *audio_flags, *_opt("--subs", subs),
         *(["--burn"] if burn else []), "-o", output,
     ]  # fmt: skip
 

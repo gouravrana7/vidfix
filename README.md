@@ -1,16 +1,26 @@
+<div align="center">
+
 # vidfix
+
+**Make, convert, fix, and verify media — to exact spec, in one command.**
 
 [![PyPI](https://img.shields.io/pypi/v/vidfix?cacheSeconds=240)](https://pypi.org/project/vidfix/)
 [![CI](https://github.com/gouravrana7/vidfix/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/gouravrana7/vidfix/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/pypi/pyversions/vidfix?cacheSeconds=240)](https://pypi.org/project/vidfix/)
 [![License](https://img.shields.io/badge/License-PolyForm_Internal_Use-blue.svg)](LICENSE)
 
-**vidfix** is a CLI-first media toolkit that creates any video, picture, or
-audio from nothing, converts anything to any format, and fixes existing files
-to exact specs (fps, duration, resolution, audio channels). Check any file
-with `vidfix info` (plain-words details) or `vidfix verify` (pass/fail
-assertions for CI). Built for anyone — developers, testers, creators, or
-someone who just wants a file converted.
+*videos, pictures & audio from nothing · any format to any format ·
+multi-track audio · captions & timecode burn-in · pass/fail checks for CI*
+
+</div>
+
+**vidfix** is a CLI-first media toolkit. It creates any video, picture, or
+audio file from nothing, converts anything to any format, muxes audio and
+subtitles together, and forces existing files to exact specs — fps, duration,
+resolution, codec, audio channels. Then it proves it: `vidfix info` reads any
+file back in plain words, `vidfix verify` turns specs into pass/fail exit
+codes for CI. Built for anyone — developers, testers, creators, or someone
+who just wants a file converted.
 
 ## No commands to learn. It talks to you.
 
@@ -18,11 +28,12 @@ someone who just wants a file converted.
 uvx vidfix
 ```
 
-That's it — nothing to install, no setup, no boring syntax to memorize.
+That's it — nothing to install, no setup, no syntax to memorize.
 vidfix asks what you want step by step in plain words, checks every answer
-as you type it, runs the job, and shows you the equivalent one-liner for
-next time. When it's done it prints the **full path where the file was saved**,
-so you never have to hunt for the output.
+**the moment you type it** (a bad answer re-prompts right there — it never
+runs a job it knows will fail), runs the job, and shows you the equivalent
+one-liner for next time. When it's done it prints the **full path where the
+file was saved**, so you never have to hunt for the output.
 
 ## Install
 
@@ -39,8 +50,9 @@ Everything vidfix needs is built in — install it and it just works.
 
 ```
 $ vidfix
-What do you want to do? (generate/convert/caption/format/verify/info/variants) [generate]:
+What do you want to do? (generate/convert/caption/attach/format/verify/info/variants) [generate]:
 Generate (video/audio-only/picture): video
+formats: 3gp, avi, flv, m4v, mkv, mov, mp4, mpeg, mpg, mxf, ogv, ts, webm, wmv — pick any
 Output file [test.mp4]: fixture.mp4
 Pattern (smpte/color-bars/testsrc/gradient/...): smpte
 Duration (e.g. 30s, 1min, 1:30) [5s]: 10 seconds
@@ -54,8 +66,10 @@ equivalent command: vidfix generate --pattern smpte --duration '10 seconds' --au
 ```
 
 Every answer is validated on the spot and the equivalent one-liner is printed
-so you can script it next time. Check the result any time with `vidfix info
-fixture.mp4` or assert it with `vidfix verify`. Or go straight to the flags:
+so you can script it next time. Answer the output prompt with just a format
+name (`mxf`) and vidfix names the file for you (`fixture.mxf`). Check the
+result any time with `vidfix info fixture.mp4` or assert it with
+`vidfix verify`. Or go straight to the flags:
 
 ```bash
 # A 60fps, 30s, 720p SMPTE-bars clip with a burned-in timecode
@@ -67,6 +81,27 @@ vidfix convert raw.mov --fps 29.97 --duration 10s --res 1280x720 -o fixture.mp4
 # Assert specs in CI (exit 0 pass / 1 fail)
 vidfix verify fixture.mp4 --fps 29.97 --duration 10s --res 1280x720
 ```
+
+## It refuses to write a broken file
+
+Every output format has real limits — codecs it can hold, channel counts,
+frame rates, how many audio tracks fit. vidfix knows them. Impossible
+combinations stop **before** anything runs, with one plain sentence instead of
+a wall of log:
+
+```
+$ vidfix generate -o clip.webm --codec h264
+error: .webm files can't hold h264; use one of: vp9.
+
+$ vidfix attach clip.mp4 --audio en.wav --audio hi.mp3 -o out.flv
+error: .flv holds at most 1 audio track(s); you attached 2. Use .mkv/.mp4/.mov.
+
+$ vidfix generate -o surround.mp3 --audio-layout 5.1
+error: .mp3 audio holds at most 2 channels; you asked for 6.
+```
+
+The wizard goes one step further: it simply never offers a choice the chosen
+format can't make.
 
 ## Commands
 
@@ -240,6 +275,7 @@ stream-copied untouched (in `caption`).
 
 ```bash
 vidfix attach clip.mp4 --audio track.m4a -o out.mp4                 # add an audio track
+vidfix attach clip.mp4 --audio en.wav --audio hi.mp3 -o out.mkv     # two audio tracks
 vidfix attach clip.mp4 --subs subs.srt -o out.mkv                   # soft subtitle track
 vidfix attach clip.mp4 --subs subs.srt --burn -o out.mp4           # burn subtitles into the picture
 vidfix attach clip.mp4 --audio track.m4a --subs subs.srt -o out.mkv # all at once
@@ -248,13 +284,15 @@ vidfix attach clip.mp4 --audio track.m4a --subs subs.srt -o out.mkv # all at onc
 | Option | Meaning | Default |
 |---|---|---|
 | `-o, --output` | Output file path | required |
-| `--audio` | Audio file to mux onto the video | — |
+| `--audio` | Audio file to add as a track (repeat for multiple tracks) | — |
 | `--subs` | Subtitle file (.srt/.vtt) to add | — |
 | `--burn` | Burn subtitles into the picture (else a soft, toggle-able track) | off |
 
 The video is stream-copied (no re-encode, no quality loss) unless subtitles are
-burned in. Soft subtitles need a `.mp4`/`.mov`/`.mkv`/`.webm` output — for other
-containers use `--burn`.
+burned in. Repeat `--audio` to add several tracks (one per file, in order) — it
+works on any video, including a `vidfix generate` clip. `.flv` holds only one
+audio track; use `.mkv`/`.mp4`/`.mov` for more. Soft subtitles need a
+`.mp4`/`.mov`/`.mkv`/`.webm` output — for other containers use `--burn`.
 
 ### `vidfix format` — any picture or video to any format
 

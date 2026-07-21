@@ -73,6 +73,7 @@ class MediaInfo(BaseModel):
     pix_fmt: str | None = None
     bitrate: int | None = None
     audio: AudioInfo | None = None
+    audio_track_count: int = 0
 
     @property
     def fps_fraction(self) -> Fraction:
@@ -104,7 +105,8 @@ def parse_ffprobe_json(payload: str, path: str) -> MediaInfo:
     fmt = data.get("format", {})
     streams = data.get("streams", [])
     video = next((s for s in streams if s.get("codec_type") == "video"), None)
-    audio = next((s for s in streams if s.get("codec_type") == "audio"), None)
+    audio_streams = [s for s in streams if s.get("codec_type") == "audio"]
+    audio = audio_streams[0] if audio_streams else None
     if video is None and audio is None:
         raise ProbeError(f"No media streams found in {path}")
 
@@ -146,6 +148,7 @@ def parse_ffprobe_json(payload: str, path: str) -> MediaInfo:
         duration=duration,
         bitrate=_first_int(fmt.get("bit_rate")),
         audio=audio_info,
+        audio_track_count=len(audio_streams),
         **video_fields,
     )
 
@@ -224,6 +227,7 @@ def parse_ffmpeg_banner(stderr: str, path: str) -> MediaInfo:
         duration=duration,
         bitrate=int(bitrate_text) * 1000 if bitrate_text.isdigit() else None,
         audio=audio_info,
+        audio_track_count=len(re.findall(r"Stream #\d+:\d+.*?: Audio:", stderr)),
         **video_fields,
     )
 

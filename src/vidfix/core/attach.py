@@ -7,8 +7,10 @@ unless subtitles are burned in.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
 
+from vidfix.core.capabilities import validate_audio_stream_count
 from vidfix.core.ffmpeg import (
     FFmpegRunner,
     ProgressCallback,
@@ -35,37 +37,56 @@ def subtitle_codec(output: str) -> str:
 def build_attach_args(
     video: str,
     output: str,
-    audio: str | None = None,
+    audios: list[str] | None = None,
     subs: str | None = None,
     burn: bool = False,
 ) -> list[str]:
-    """Pure builder for the attach/mux FFmpeg argument list."""
+    """Pure builder for the attach/mux FFmpeg argument list.
+
+    ``audios`` maps to one output audio track per file, in the order given.
+    """
+    from vidfix.core.formats import VIDEO_EXTS, validate_output_ext
     from vidfix.core.generate import escape_filter_path
 
-    if audio is None and subs is None:
+    audios = audios or None
+    if audios is None and subs is None:
         raise InvalidSpecError("Nothing to attach: pass an audio file, a subtitle file, or both.")
 
+    validate_output_ext(output, VIDEO_EXTS)
     out_ext = Path(output).suffix.lower()
+    if out_ext == ".gif":
+        raise InvalidSpecError(
+            "GIF can't hold audio or subtitle tracks; attach to a video container "
+            "like .mp4/.mkv/.mov instead."
+        )
     if subs is not None and not burn and out_ext not in SUBTITLE_CODECS:
         raise InvalidSpecError(
             f"{out_ext} can't hold a soft subtitle track; use .mp4/.mov/.mkv/.webm, "
             "or add --burn to burn the subtitles into the picture."
         )
+    if audios is not None and len(audios) > 1:
+        validate_audio_stream_count(len(audios), output)
 
     args = ["-i", video]
     idx = 1
-    audio_idx = subs_idx = None
-    if audio is not None:
-        args += ["-i", audio]
-        audio_idx = idx
-        idx += 1
+    audio_indices: list[int] = []
+    subs_idx = None
+    if audios is not None:
+        for track in audios:
+            args += ["-i", track]
+            audio_indices.append(idx)
+            idx += 1
     if subs is not None and not burn:
         args += ["-i", subs]
         subs_idx = idx
         idx += 1
 
     args += ["-map", "0:v:0"]
-    args += ["-map", f"{audio_idx}:a:0"] if audio_idx is not None else ["-map", "0:a:0?"]
+    if audio_indices:
+        for ai in audio_indices:
+            args += ["-map", f"{ai}:a:0"]
+    else:
+        args += ["-map", "0:a:0?"]
     if subs_idx is not None:
         args += ["-map", f"{subs_idx}:s:0"]
 
@@ -76,7 +97,7 @@ def build_attach_args(
     else:
         args += ["-c:v", "copy"]
 
-    if audio_idx is not None:
+    if audio_indices:
         args += audio_codec_args(output)
         args += ["-shortest"]
     else:
@@ -92,20 +113,22 @@ def build_attach_args(
 def attach(
     video: str | Path,
     output: str | Path,
-    audio: str | Path | None = None,
+    audio: Sequence[str | Path] | str | Path | None = None,
     subs: str | Path | None = None,
     burn: bool = False,
     runner: FFmpegRunner | None = None,
     on_progress: ProgressCallback | None = None,
 ) -> Path:
-    """Mux an audio file and/or subtitle onto a video (burn subs when ``burn``)."""
+    """Mux audio file(s) and/or a subtitle onto a video (burn subs when ``burn``).
+
+    ``audio`` may be a single path or a list of paths (one output track each).
+    """
     runner = runner or FFmpegRunner()
     if burn:
         from vidfix.core.generate import drawtext_runner
 
         runner = drawtext_runner(runner)
     else:
-        # The video is stream-copied, so the source codec must fit the output box.
         from vidfix.core.capabilities import validate_codec
         from vidfix.core.ffmpeg import CODEC_PROBE_NAMES
         from vidfix.core.probe import probe
@@ -115,10 +138,19 @@ def attach(
         vidfix_codec = by_probe_name.get(source.video_codec)
         if vidfix_codec is not None:
             validate_codec(vidfix_codec, str(output))
+    if audio is None:
+        audios = None
+    elif isinstance(audio, (str, Path)):
+        audios = [str(audio)]
+    else:
+        audios = [str(a) for a in audio]
+    for extra in [*(audios or []), *([str(subs)] if subs is not None else [])]:
+        if not Path(extra).is_file():
+            raise InvalidSpecError(f"File not found: {extra}")
     args = build_attach_args(
         str(video),
         str(output),
-        audio=str(audio) if audio is not None else None,
+        audios=audios,
         subs=str(subs) if subs is not None else None,
         burn=burn,
     )

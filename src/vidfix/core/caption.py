@@ -9,7 +9,12 @@ from __future__ import annotations
 import tempfile
 from pathlib import Path
 
-from vidfix.core.ffmpeg import FFmpegRunner, ProgressCallback, video_codec_args
+from vidfix.core.ffmpeg import (
+    FFmpegRunner,
+    ProgressCallback,
+    default_codec_for,
+    video_codec_args,
+)
 from vidfix.core.generate import drawtext_runner, escape_filter_path, find_font
 from vidfix.exceptions import InvalidSpecError
 
@@ -86,6 +91,9 @@ def caption(
     on_progress: ProgressCallback | None = None,
 ) -> Path:
     """Burn a caption into an existing video (audio is stream-copied)."""
+    from vidfix.core.formats import VIDEO_EXTS, validate_output_ext
+
+    validate_output_ext(str(output), VIDEO_EXTS)
     runner = drawtext_runner(runner or FFmpegRunner())
     textfile = write_caption_file(text)
     try:
@@ -98,7 +106,16 @@ def caption(
             start=start,
             end=end,
         )
-        args = ["-i", str(input_path), "-vf", vf, *video_codec_args("h264"), "-c:a", "copy"]
+        codec = default_codec_for(str(output))
+        args = [
+            "-i",
+            str(input_path),
+            "-vf",
+            vf,
+            *video_codec_args(codec, str(output)),
+            "-c:a",
+            "copy",
+        ]
         runner.run([*args, str(output)], on_progress=on_progress)
     finally:
         Path(textfile).unlink(missing_ok=True)

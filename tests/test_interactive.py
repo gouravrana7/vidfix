@@ -238,7 +238,7 @@ class TestOtherFlows:
         aud.write_bytes(b"x")
         srt = tmp_path / "s.srt"
         srt.write_text("x")
-        Script(monkeypatch, [media_file, str(aud), str(srt), True, "out.mkv"])
+        Script(monkeypatch, [media_file, str(aud), "", str(srt), True, "out.mkv"])
         argv = interactive.attach_flow()
         assert argv[:2] == ["attach", media_file]
         assert argv[argv.index("--audio") + 1] == str(aud)
@@ -251,10 +251,30 @@ class TestOtherFlows:
     ) -> None:
         aud = tmp_path / "a.m4a"
         aud.write_bytes(b"x")
-        Script(monkeypatch, [media_file, str(aud), "", "out.mp4"])
+        Script(monkeypatch, [media_file, str(aud), "", "", "out.mp4"])
         argv = interactive.attach_flow()
         assert "--audio" in argv
         assert "--subs" not in argv and "--burn" not in argv
+
+    def test_attach_flow_two_audios(
+        self, monkeypatch: pytest.MonkeyPatch, media_file: str, tmp_path: Path
+    ) -> None:
+        a1, a2 = tmp_path / "en.wav", tmp_path / "hi.mp3"
+        a1.write_bytes(b"x")
+        a2.write_bytes(b"x")
+        Script(monkeypatch, [media_file, str(a1), str(a2), "", "", "out.mkv"])
+        argv = interactive.attach_flow()
+        assert [argv[i + 1] for i, a in enumerate(argv) if a == "--audio"] == [str(a1), str(a2)]
+
+    def test_attach_flow_subs_only(
+        self, monkeypatch: pytest.MonkeyPatch, media_file: str, tmp_path: Path
+    ) -> None:
+        srt = tmp_path / "s.srt"
+        srt.write_text("x")
+        Script(monkeypatch, [media_file, "", str(srt), False, "out.mkv"])
+        argv = interactive.attach_flow()
+        assert "--audio" not in argv
+        assert argv[argv.index("--subs") + 1] == str(srt)
 
     def test_ask_optional_file_reprompts(
         self, monkeypatch: pytest.MonkeyPatch, media_file: str
@@ -354,3 +374,101 @@ class TestAskSpecRequired:
     def test_blank_reprompts_when_not_optional(self, monkeypatch: pytest.MonkeyPatch) -> None:
         Script(monkeypatch, ["", "30"])
         assert interactive.ask_spec("fps", interactive.parse_fps, optional=False) == "30"
+
+
+class TestOutputHint:
+    def test_suggest_prints_formats(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        Script(monkeypatch, ["out.mkv"])
+        interactive.ask_output("test.mp4", suggest=interactive.VIDEO_EXTS)
+        out = capsys.readouterr().out
+        assert "formats:" in out
+        assert "mkv" in out and "mxf" in out and "mp4" in out
+
+    def test_audio_hint(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        Script(monkeypatch, ["out.flac"])
+        interactive.ask_output("test.wav", suggest=set(interactive.AUDIO_EXTENSIONS))
+        out = capsys.readouterr().out
+        assert "wav" in out and "flac" in out
+
+    def test_no_suggest_no_hint(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        Script(monkeypatch, ["out.mp4"])
+        interactive.ask_output("test.mp4")
+        assert "formats:" not in capsys.readouterr().out
+
+    def test_bare_format_name_becomes_extension(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        Script(monkeypatch, ["mxf"])
+        out = interactive.ask_output("test_converted.mp4", suggest=interactive.ENCODE_EXTS)
+        assert out == "test_converted.mxf"
+
+    def test_invalid_extension_reprompts(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        Script(monkeypatch, ["nonsense.xyz", "out.mkv"])
+        out = interactive.ask_output("test.mp4", suggest=interactive.ENCODE_EXTS)
+        assert out == "out.mkv"
+        assert "Pick a name" in capsys.readouterr().out
+
+    def test_gif_not_suggested_for_encode_flows(self) -> None:
+        assert ".gif" not in interactive.ENCODE_EXTS
+        assert ".mp4" in interactive.ENCODE_EXTS
+
+
+class TestOutputHintPerFlow:
+    """Every wizard flow with an output prompt shows the format hint."""
+
+    def test_generate_video(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        Script(monkeypatch, ["", "bars.mp4", "smpte", "df30", "", "", "", "", "", "", False])
+        interactive.generate_flow()
+        out = capsys.readouterr().out
+        assert "formats:" in out and "mkv" in out and "mxf" in out
+
+    def test_audio_only(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        Script(monkeypatch, ["beep.wav", "", "", ""])
+        interactive.audio_flow()
+        out = capsys.readouterr().out
+        assert "formats:" in out and "flac" in out
+
+    def test_picture(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        Script(monkeypatch, ["testsrc", "1080p", "", "card.png"])
+        interactive.picture_flow()
+        out = capsys.readouterr().out
+        assert "formats:" in out and "png" in out and "tiff" in out
+
+    def test_convert(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], media_file: str
+    ) -> None:
+        Script(monkeypatch, [media_file, "out.mp4", "df60", "", "", "", "keep", "", "", False])
+        interactive.convert_flow()
+        assert "formats:" in capsys.readouterr().out
+
+    def test_caption(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], media_file: str
+    ) -> None:
+        Script(monkeypatch, [media_file, "Take 42", "top", "", "cap.mp4"])
+        interactive.caption_flow()
+        assert "formats:" in capsys.readouterr().out
+
+    def test_attach(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+        media_file: str,
+        tmp_path: Path,
+    ) -> None:
+        aud = tmp_path / "a.m4a"
+        aud.write_bytes(b"x")
+        Script(monkeypatch, [media_file, str(aud), "", "", "out.mp4"])
+        interactive.attach_flow()
+        assert "formats:" in capsys.readouterr().out
