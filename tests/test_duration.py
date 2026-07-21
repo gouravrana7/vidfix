@@ -79,7 +79,6 @@ class TestParseFps:
             parse_fps(spec)
 
     def test_drop_frame_stays_exact(self) -> None:
-        # 29.97 must become the exact NTSC rational, not Fraction(2997, 100).
         assert parse_fps("29.97") == Fraction(30000, 1001)
         assert float(parse_fps("29.97")) != 29.97
 

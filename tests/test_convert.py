@@ -30,7 +30,7 @@ class TestStreamCopyFastPath:
         p = build_convert_plan("in.mp4", "out.mp4", source(), duration=5.0)
         assert p.stream_copy
         assert "-c" in p.args and "copy" in p.args
-        assert p.warnings  # keyframe accuracy warning
+        assert p.warnings
 
     def test_precise_forces_reencode(self) -> None:
         p = build_convert_plan("in.mp4", "out.mp4", source(), duration=5.0, precise=True)
@@ -44,6 +44,11 @@ class TestStreamCopyFastPath:
     def test_fps_change_reencodes(self) -> None:
         p = build_convert_plan("in.mp4", "out.mp4", source(), duration=5.0, fps=Fraction(60))
         assert not p.stream_copy
+
+    def test_codec_defaults_to_container(self) -> None:
+        p = build_convert_plan("in.mp4", "out.webm", source(), fps=Fraction(60))
+        assert "libvpx-vp9" in p.args
+        assert "libopus" in p.args
 
 
 class TestFilters:
@@ -101,6 +106,18 @@ class TestAudio:
         assert any("sine=frequency=440" in a for a in p.args)
         assert "0:v" in p.args and "1:a" in p.args
 
+    def test_audio_silence_maps_anullsrc_and_shortest(self) -> None:
+        p = build_convert_plan("in.mp4", "out.mp4", source(), audio_silence=True)
+        assert any("anullsrc" in a for a in p.args)
+        assert "0:v" in p.args and "1:a" in p.args
+        assert "-shortest" in p.args
+        assert not p.stream_copy
+
+    def test_audio_silence_bounded_by_duration(self) -> None:
+        p = build_convert_plan("in.mp4", "out.mp4", source(), duration=3.0, audio_silence=True)
+        assert "-shortest" not in p.args
+        assert p.args[p.args.index("-t") + 1] == "3.0"
+
     def test_source_without_audio_gets_no_audio_args(self) -> None:
         p = build_convert_plan("in.mp4", "out.mp4", source(audio=False), fps=Fraction(60))
         assert "-c:a" not in p.args
@@ -144,3 +161,11 @@ class TestNoAudioStreamCopy:
         p = build_convert_plan("in.mp4", "out.mp4", source(), duration=5.0, no_audio=True)
         assert p.stream_copy
         assert "-an" in p.args
+
+
+class TestConvertAudioType:
+    def test_rejects_unknown_audio(self) -> None:
+        from vidfix.core.convert import convert
+
+        with pytest.raises(InvalidSpecError, match="Unknown audio type"):
+            convert("in.mp4", "out.mp4", audio="bogus")

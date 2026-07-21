@@ -20,12 +20,12 @@ from vidfix.core.ffmpeg import (
     FFmpegRunner,
     ProgressCallback,
     audio_codec_args,
+    default_codec_for,
     video_codec_args,
 )
-from vidfix.core.formats import IMAGE_EXTS
+from vidfix.core.formats import AUDIO_EXTS, IMAGE_EXTS
 from vidfix.exceptions import ConversionError, FFmpegNotFoundError, InvalidSpecError
 
-#: Pattern names mapped to lavfi source names. ``solid:COLOR`` is handled separately.
 PATTERN_SOURCES: dict[str, str] = {
     "smpte": "smptebars",
     "color-bars": "smptehdbars",
@@ -35,35 +35,36 @@ PATTERN_SOURCES: dict[str, str] = {
 
 AUDIO_MODES = ("tone", "silence", "none")
 
-#: Channel layout names mapped to channel counts (FFmpeg ``-ac``).
 AUDIO_LAYOUTS: dict[str, int] = {"mono": 1, "stereo": 2, "5.1": 6, "7.1": 8}
 
-#: Channel-identification layouts: audio in one channel of a stereo pair.
 PAN_LAYOUTS: dict[str, str] = {"left": "pan=stereo|FL=c0", "right": "pan=stereo|FR=c0"}
 
-#: Output extensions that produce an audio-only file (no video stream).
-AUDIO_EXTENSIONS = frozenset({".wav", ".mp3", ".m4a", ".flac"})
+AUDIO_EXTENSIONS = AUDIO_EXTS
 
 
-def validate_layout(layout: str | None) -> None:
-    """Raise :class:`InvalidSpecError` for a channel layout name vidfix doesn't know."""
-    if layout is not None and layout not in AUDIO_LAYOUTS and layout not in PAN_LAYOUTS:
+def validate_layout(layout: str | None, output: str | None = None) -> None:
+    """Reject an unknown layout name, or one with more channels than ``output`` holds."""
+    if layout is None:
+        return
+    if layout not in AUDIO_LAYOUTS and layout not in PAN_LAYOUTS:
         raise InvalidSpecError(
             f"Unknown audio layout {layout!r}; expected one of: {(*AUDIO_LAYOUTS, *PAN_LAYOUTS)}."
         )
+    if output is not None and layout in AUDIO_LAYOUTS:
+        from vidfix.core.capabilities import validate_channels
+
+        validate_channels(AUDIO_LAYOUTS[layout], output)
 
 
 _COLOR_RE = re.compile(r"^[0-9a-zA-Z#]+$")
 
-#: Common monospace/system fonts checked for drawtext; FFmpeg's fontconfig
-#: default is used when none exist (typical on Linux with fontconfig built in).
 _FONT_CANDIDATES = (
-    "/System/Library/Fonts/Supplemental/Courier New.ttf",  # macOS
-    "/System/Library/Fonts/Helvetica.ttc",  # macOS fallback
-    "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",  # Debian/Ubuntu
-    "/usr/share/fonts/dejavu/DejaVuSansMono.ttf",  # Fedora
-    "C:\\Windows\\Fonts\\consola.ttf",  # Windows
-    "C:\\Windows\\Fonts\\arial.ttf",  # Windows fallback
+    "/System/Library/Fonts/Supplemental/Courier New.ttf",
+    "/System/Library/Fonts/Helvetica.ttc",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+    "/usr/share/fonts/dejavu/DejaVuSansMono.ttf",
+    "C:\\Windows\\Fonts\\consola.ttf",
+    "C:\\Windows\\Fonts\\arial.ttf",
 )
 
 
@@ -130,7 +131,6 @@ def escape_filter_path(path: str) -> str:
     return path.replace("\\", "/").replace(":", "\\:")
 
 
-#: Rates where broadcast drop-frame timecode is defined (NTSC 29.97/59.94).
 DROP_FRAME_TC_RATES = frozenset({Fraction(30000, 1001), Fraction(60000, 1001)})
 
 
@@ -164,7 +164,7 @@ def build_generate_args(
     duration: float,
     res: Resolution,
     pattern: str = "smpte",
-    codec: str = "h264",
+    codec: str | None = None,
     audio: str = "tone",
     layout: str | None = None,
     timecode: bool = False,
@@ -175,7 +175,8 @@ def build_generate_args(
     """Pure builder for the FFmpeg argument list (after base flags)."""
     if audio not in AUDIO_MODES:
         raise InvalidSpecError(f"Unknown audio mode {audio!r}; expected one of: {AUDIO_MODES}.")
-    validate_layout(layout)
+    validate_layout(layout, output)
+    codec = codec or default_codec_for(output)
     suffix = Path(output).suffix.lower()
     audio_only = suffix in AUDIO_EXTENSIONS
     if audio_only and audio == "none":
@@ -186,7 +187,11 @@ def build_generate_args(
     if image and timecode:
         raise InvalidSpecError("Timecode needs a moving video; a picture has only one frame.")
     if image:
-        audio = "none"  # pictures carry no audio track
+        audio = "none"
+    if not audio_only and not image:
+        from vidfix.core.capabilities import validate_fps
+
+        validate_fps(fps, output)
 
     args = [] if audio_only else ["-f", "lavfi", "-i", video_source(pattern, fps, duration, res)]
     if audio == "tone":
@@ -202,7 +207,7 @@ def build_generate_args(
             vf.append(caption_vf)
         if vf:
             args += ["-vf", ",".join(vf)]
-        if image:  # single-frame grab, image muxer picks the codec (png/mjpeg/…)
+        if image:
             args += ["-frames:v", "1"]
             if suffix in (".jpg", ".jpeg"):
                 args += ["-q:v", "2"]
@@ -212,7 +217,7 @@ def build_generate_args(
     if audio == "none":
         args += ["-an"]
     else:
-        if not audio_only:  # audio-only: each muxer's default encoder (wav→pcm, mp3→lame, …)
+        if not audio_only:
             args += audio_codec_args(output)
         if layout in AUDIO_LAYOUTS:
             args += ["-ac", str(AUDIO_LAYOUTS[layout])]
@@ -228,18 +233,25 @@ def generate(
     duration: str | float = "5s",
     res: str = "1280x720",
     pattern: str = "smpte",
-    codec: str = "h264",
+    codec: str | None = None,
     audio: str = "tone",
     layout: str | None = None,
     timecode: bool = False,
     drop_frame: bool | None = None,
     text: str | None = None,
+    position: str = "bottom",
+    size: str = "h/12",
+    color: str = "white",
+    start: float | None = None,
+    end: float | None = None,
     runner: FFmpegRunner | None = None,
     on_progress: ProgressCallback | None = None,
 ) -> Path:
     """Generate a synthetic test video matching the given specs exactly."""
     from vidfix.core.caption import caption_filter, write_caption_file
+    from vidfix.core.formats import VIDEO_EXTS, validate_output_ext
 
+    validate_output_ext(str(output), VIDEO_EXTS | AUDIO_EXTS | IMAGE_EXTS)
     out = Path(output)
     runner = runner or FFmpegRunner()
     if timecode or text:
@@ -247,7 +259,19 @@ def generate(
 
     textfile = write_caption_file(text) if text else None
     try:
-        caption_vf = caption_filter(textfile, font=find_font()) if textfile is not None else None
+        caption_vf = (
+            caption_filter(
+                textfile,
+                position=position,
+                size=size,
+                color=color,
+                font=find_font(),
+                start=start,
+                end=end,
+            )
+            if textfile is not None
+            else None
+        )
         args = build_generate_args(
             output=str(out),
             fps=parse_fps(fps),

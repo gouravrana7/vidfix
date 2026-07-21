@@ -20,7 +20,6 @@ from vidfix.core.duration import FPS_LABELS, parse_fps
 from vidfix.core.ffmpeg import FFmpegRunner
 from vidfix.exceptions import ProbeError
 
-#: ISO base-media major_brand tags mapped to friendly container names.
 MAJOR_BRANDS: dict[str, str] = {
     "isom": "mp4",
     "mp41": "mp4",
@@ -42,7 +41,7 @@ def friendly_container(demuxer: str, major_brand: str | None, path: str) -> str:
     brand = (major_brand or "").strip()
     if brand in MAJOR_BRANDS:
         return MAJOR_BRANDS[brand]
-    if brand.startswith("3g"):  # 3gp4/3gp5/3gp6/3ge6/... — the 3GPP brand family
+    if brand.startswith("3g"):
         return "3gp"
     extension = Path(path).suffix.lstrip(".").lower()
     names = demuxer.split(",")
@@ -63,19 +62,18 @@ class MediaInfo(BaseModel):
     """Normalized metadata for one media file."""
 
     path: str
-    container: str  # friendly name, e.g. "mp4"
-    demuxer: str | None = None  # raw ffprobe/ffmpeg format name, e.g. "mov,mp4,m4a,3gp,3g2,mj2"
-    major_brand: str | None = None  # ISO base-media brand tag, e.g. "isom"
+    container: str
+    demuxer: str | None = None
+    major_brand: str | None = None
     duration: float
-    # Video fields default to zero-values for audio-only files (e.g. wav/mp3),
-    # so spec checks against them fail honestly instead of crashing.
     width: int = 0
     height: int = 0
-    fps: str = "0"  # exact rational text, e.g. "30000/1001" or "30"
+    fps: str = "0"
     video_codec: str = "none"
     pix_fmt: str | None = None
-    bitrate: int | None = None  # bits per second, container-level
+    bitrate: int | None = None
     audio: AudioInfo | None = None
+    audio_track_count: int = 0
 
     @property
     def fps_fraction(self) -> Fraction:
@@ -107,7 +105,8 @@ def parse_ffprobe_json(payload: str, path: str) -> MediaInfo:
     fmt = data.get("format", {})
     streams = data.get("streams", [])
     video = next((s for s in streams if s.get("codec_type") == "video"), None)
-    audio = next((s for s in streams if s.get("codec_type") == "audio"), None)
+    audio_streams = [s for s in streams if s.get("codec_type") == "audio"]
+    audio = audio_streams[0] if audio_streams else None
     if video is None and audio is None:
         raise ProbeError(f"No media streams found in {path}")
 
@@ -128,7 +127,6 @@ def parse_ffprobe_json(payload: str, path: str) -> MediaInfo:
             "pix_fmt": video.get("pix_fmt"),
         }
 
-    # Still images have no duration; report 0 rather than failing the probe.
     duration = _first_float(fmt.get("duration"), (video or {}).get("duration")) or 0.0
 
     audio_info = None
@@ -150,6 +148,7 @@ def parse_ffprobe_json(payload: str, path: str) -> MediaInfo:
         duration=duration,
         bitrate=_first_int(fmt.get("bit_rate")),
         audio=audio_info,
+        audio_track_count=len(audio_streams),
         **video_fields,
     )
 
@@ -181,7 +180,6 @@ def parse_ffmpeg_banner(stderr: str, path: str) -> MediaInfo:
             f"Cannot probe {path}: not a recognizable media file.\n{stderr.strip()[-500:]}"
         )
 
-    # Still images print "Duration: N/A"; report 0 rather than failing the probe.
     duration = 0.0
     bitrate_text = "N/A"
     if duration_m:
@@ -229,6 +227,7 @@ def parse_ffmpeg_banner(stderr: str, path: str) -> MediaInfo:
         duration=duration,
         bitrate=int(bitrate_text) * 1000 if bitrate_text.isdigit() else None,
         audio=audio_info,
+        audio_track_count=len(re.findall(r"Stream #\d+:\d+.*?: Audio:", stderr)),
         **video_fields,
     )
 
@@ -259,9 +258,8 @@ def probe(input_path: str | Path, runner: FFmpegRunner | None = None) -> MediaIn
         )
         if completed.returncode == 0:
             return parse_ffprobe_json(completed.stdout, str(path))
-        # ffprobe failed (corrupt file, odd container) — fall through to ffmpeg banner
 
-    result = runner.run(["-i", str(path)], check=False)  # exits 1: no output file requested
+    result = runner.run(["-i", str(path)], check=False)
     return parse_ffmpeg_banner(result.stderr, str(path))
 
 

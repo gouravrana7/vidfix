@@ -46,7 +46,7 @@ def combined_output(result: Any) -> str:
     """stdout + stderr regardless of click version's capture split."""
     try:
         return str(result.output) + str(result.stderr)
-    except ValueError:  # stderr not separately captured
+    except ValueError:
         return str(result.output)
 
 
@@ -88,11 +88,11 @@ class TestGenerateCli:
     @pytest.mark.parametrize(
         ("preset", "fps", "expected_fps"),
         [
-            ("df30", "30", "30"),  # user overrides DF preset with an exact rate
-            ("df30", "29.97", "29.97"),  # override to the same DF rate
+            ("df30", "30", "30"),
+            ("df30", "29.97", "29.97"),
             ("ndf30", "25", "25"),
             ("pal25", "30", "30"),
-            (None, "29.97", "29.97"),  # no preset at all
+            (None, "29.97", "29.97"),
         ],
     )
     def test_explicit_fps_drops_preset_timecode_hint(
@@ -186,7 +186,7 @@ class TestConvertCli:
         assert rec.kwargs["smooth"] is True
         assert rec.kwargs["extend_mode"] == "loop"
         assert rec.kwargs["stretch"] is True
-        assert rec.kwargs["audio_tone"] is True
+        assert rec.kwargs["audio"] == "tone"
         assert rec.kwargs["layout"] == "mono"
         assert rec.kwargs["precise"] is True
 
@@ -226,6 +226,41 @@ class TestCaptionErrorCli:
         result = runner.invoke(cli.app, ["caption", "in.mp4", "-o", "out.mp4", "--text", "x"])
         assert result.exit_code == 1
         assert "drawtext missing" in combined_output(result)
+
+
+class TestAttachCli:
+    def test_passthrough(self, monkeypatch: pytest.MonkeyPatch, fake_probe: None) -> None:
+        rec = Recorder()
+        monkeypatch.setattr(cli.attach_mod, "attach", rec)
+        result = runner.invoke(
+            cli.app,
+            ["attach", "in.mp4", "-o", "out.mkv",
+             "--audio", "a.m4a", "--subs", "s.srt", "--burn"],
+        )  # fmt: skip
+        assert result.exit_code == 0
+        assert "wrote out.mkv" in result.output
+        assert [str(a) for a in rec.kwargs["audio"]] == ["a.m4a"]
+        assert str(rec.kwargs["subs"]) == "s.srt"
+        assert rec.kwargs["burn"] is True
+
+    def test_multiple_audio_tracks(self, monkeypatch: pytest.MonkeyPatch, fake_probe: None) -> None:
+        rec = Recorder()
+        monkeypatch.setattr(cli.attach_mod, "attach", rec)
+        result = runner.invoke(
+            cli.app,
+            ["attach", "in.mp4", "-o", "out.mkv", "--audio", "en.wav", "--audio", "hi.mp3"],
+        )
+        assert result.exit_code == 0
+        assert [str(a) for a in rec.kwargs["audio"]] == ["en.wav", "hi.mp3"]
+
+    def test_error_exits_1(self, monkeypatch: pytest.MonkeyPatch, fake_probe: None) -> None:
+        def boom(*args: Any, **kwargs: Any) -> None:
+            raise ConversionError("nothing to attach")
+
+        monkeypatch.setattr(cli.attach_mod, "attach", boom)
+        result = runner.invoke(cli.app, ["attach", "in.mp4", "-o", "out.mp4"])
+        assert result.exit_code == 1
+        assert "nothing to attach" in combined_output(result)
 
 
 class TestFormatCli:
@@ -348,8 +383,8 @@ class TestInfoCli:
         monkeypatch.setattr(cli.probe_mod, "probe", lambda _: info)
         result = runner.invoke(cli.app, ["info", "tone.wav"])
         assert result.exit_code == 0
-        assert "none" in result.output  # video: none row
-        assert "?" in result.output  # unknown sample rate and channels
+        assert "none" in result.output
+        assert "?" in result.output
 
     def test_no_audio_track_row(self, monkeypatch: pytest.MonkeyPatch) -> None:
         info = INFO.model_copy(update={"audio": None, "bitrate": None})
@@ -357,6 +392,18 @@ class TestInfoCli:
         result = runner.invoke(cli.app, ["info", "mute.mp4"])
         assert result.exit_code == 0
         assert "audio" in result.output and "none" in result.output
+
+    def test_multiple_audio_tracks_row(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        info = INFO.model_copy(
+            update={
+                "audio_track_count": 2,
+                "audio": AudioInfo(codec="aac", sample_rate=None, channels=None),
+            }
+        )
+        monkeypatch.setattr(cli.probe_mod, "probe", lambda _: info)
+        result = runner.invoke(cli.app, ["info", "multi.mkv"])
+        assert result.exit_code == 0
+        assert "2 tracks" in result.output
 
     def test_probe_alias_still_works(self, fake_probe: None) -> None:
         result = runner.invoke(cli.app, ["probe", "in.mp4"])

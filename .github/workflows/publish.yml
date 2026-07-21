@@ -1,22 +1,49 @@
-# PyPI release via trusted publishing. Activates when the repo goes public at
-# v0.1.0 — configure the "vidfix" project on PyPI with this repo + workflow as
-# a trusted publisher first.
 name: Publish
 
 on:
   push:
-    tags: ["v*"]
+    branches: ["main"]
 
 jobs:
   publish:
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
-      id-token: write  # required for PyPI trusted publishing
+      id-token: write
+      contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Read version and check for an existing tag
+        id: check
+        run: |
+          version="$(grep -m1 '^version' pyproject.toml | sed -E 's/.*"(.*)".*/\1/')"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if git rev-parse "v$version" >/dev/null 2>&1; then
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: astral-sh/setup-uv@v5
+        if: steps.check.outputs.release == 'true'
         with:
           python-version: "3.12"
+
       - run: uv build
+        if: steps.check.outputs.release == 'true'
+
       - run: uv publish
+        if: steps.check.outputs.release == 'true'
+
+      - name: Tag and create the GitHub Release
+        if: steps.check.outputs.release == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${{ steps.check.outputs.version }}"
+          git tag "v$version"
+          git push origin "v$version"
+          gh release create "v$version" --title "v$version" --notes "See CHANGELOG.md"

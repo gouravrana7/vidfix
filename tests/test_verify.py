@@ -21,7 +21,7 @@ INFO = MediaInfo(
 
 class TestFpsTolerance:
     def test_within_default_tolerance(self) -> None:
-        result = check_specs(INFO, fps=Fraction(2997, 100))  # 29.97 float vs 30000/1001
+        result = check_specs(INFO, fps=Fraction(2997, 100))
         assert result.passed
 
     def test_outside_tolerance(self) -> None:
@@ -52,7 +52,7 @@ class TestResolutionAndCodec:
     def test_codec_name_mapping(self) -> None:
         assert check_specs(INFO, codec="h264").passed
         hevc = INFO.model_copy(update={"video_codec": "hevc"})
-        assert check_specs(hevc, codec="h265").passed  # h265 maps to probe name hevc
+        assert check_specs(hevc, codec="h265").passed
         assert not check_specs(INFO, codec="vp9").passed
 
 

@@ -120,8 +120,8 @@ class TestUserPresets:
 class TestApplyPreset:
     def test_explicit_flags_win(self) -> None:
         merged = presets.apply_preset("web-720p", fps="60", duration=None, res=None, codec=None)
-        assert merged["fps"] == "60"  # explicit beats preset's 30
-        assert merged["res"] == "720p"  # preset fills the gap
+        assert merged["fps"] == "60"
+        assert merged["res"] == "720p"
         assert merged["codec"] == "h264"
 
     def test_no_preset_passthrough(self) -> None:

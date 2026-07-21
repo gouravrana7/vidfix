@@ -15,12 +15,8 @@ import yaml
 
 from vidfix.exceptions import PresetError
 
-#: Keys a preset may set (the same strings the CLI flags accept), plus
-#: ``timecode`` (df/ndf counting for burn-in) and ``alias`` (points at
-#: another preset).
 PRESET_KEYS = frozenset({"description", "fps", "duration", "res", "codec", "timecode", "alias"})
 
-#: Timecode counting modes: drop-frame (semicolon notation) vs non-drop-frame.
 TIMECODE_MODES = ("df", "ndf")
 
 Preset = dict[str, str]
