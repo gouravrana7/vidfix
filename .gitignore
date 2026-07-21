@@ -35,3 +35,4 @@ plan.md
 *.webm
 *.mkv
 !tests/fixtures/*.mp4
+.claude/
