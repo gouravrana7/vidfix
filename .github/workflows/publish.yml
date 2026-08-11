@@ -46,4 +46,20 @@ jobs:
           version="${{ steps.check.outputs.version }}"
           git tag "v$version"
           git push origin "v$version"
-          gh release create "v$version" --title "v$version" --notes "See CHANGELOG.md"
+          python3 - "$version" <<'PY' > release-notes.md
+          import pathlib, sys
+
+          version = sys.argv[1]
+          changelog = pathlib.Path("CHANGELOG.md").read_text()
+          marker = f"## [{version}]"
+          if marker in changelog:
+              section = changelog.split(marker, 1)[1].split("\n## [", 1)[0]
+              print(section.split("\n", 1)[1].strip())
+          else:
+              print("See CHANGELOG.md")
+          print()
+          print("```bash")
+          print(f"pip install --upgrade vidfix    # or: uvx vidfix@{version}")
+          print("```")
+          PY
+          gh release create "v$version" --title "v$version" --notes-file release-notes.md
