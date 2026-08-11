@@ -16,34 +16,39 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync --all-extras
-      - name: reproduce the .ts attach
+      - name: scope the .ts segfault
         run: |
           uv run python - <<'PY'
           import subprocess
-          from pathlib import Path
-          from vidfix import generate
+          from vidfix import generate, convert
           from vidfix.core.attach import build_attach_args
-          from vidfix.core.ffmpeg import FFmpegRunner, find_ffmpeg, find_ffprobe
+          from vidfix.core.ffmpeg import FFmpegRunner, find_ffmpeg
 
-          print("ffmpeg:", find_ffmpeg())
-          print("ffprobe:", find_ffprobe())
-          print(subprocess.run([find_ffmpeg(), "-version"], capture_output=True, text=True).stdout[:400])
+          ff = find_ffmpeg()
+          runner = FFmpegRunner()
+
+          def check(label, path):
+              r = subprocess.run([ff, "-hide_banner", "-i", path], capture_output=True, text=True)
+              d = subprocess.run([ff, "-hide_banner", "-v", "error", "-i", path, "-f", "null", "-"],
+                                 capture_output=True, text=True)
+              print(f"{label:34} probe_rc={r.returncode:4} decode_rc={d.returncode:4} stderr={r.stderr.strip()[-90:]!r}")
 
           generate("base.mp4", duration="1", res="160x120", audio="none")
           generate("a.m4a", duration="1")
-          args = build_attach_args("base.mp4", "o.ts", audios=["a.m4a"], video_codec="h264")
-          print("ARGS:", args)
-          runner = FFmpegRunner()
-          result = runner.run(args, check=False)
-          print("MUX RC:", result.returncode)
-          print("MUX STDERR:", result.stderr[-3000:])
-          print("SIZE:", Path("o.ts").stat().st_size)
+          check("plain mp4 (control)", "base.mp4")
 
-          probe_result = runner.run(["-i", "o.ts"], check=False)
-          print("PROBE RC:", probe_result.returncode)
-          print("PROBE STDERR:", repr(probe_result.stderr[-3000:]))
+          generate("gen.ts", duration="1", res="160x120", audio="tone")
+          check("generate -> ts", "gen.ts")
 
-          raw = subprocess.run([find_ffmpeg(), "-i", "o.ts"], capture_output=True, text=True)
-          print("RAW RC:", raw.returncode)
-          print("RAW STDERR:", raw.stderr[-3000:])
+          generate("gen_noaudio.ts", duration="1", res="160x120", audio="none")
+          check("generate -> ts (no audio)", "gen_noaudio.ts")
+
+          convert("base.mp4", "conv.ts", fps="25")
+          check("convert -> ts", "conv.ts")
+
+          for label, extra in [("attach ts with bsf", ["-bsf:v", "h264_mp4toannexb"]), ("attach ts no bsf", [])]:
+              out = label.replace(" ", "_") + ".ts"
+              runner.run(["-i", "base.mp4", "-i", "a.m4a", "-map", "0:v:0", "-map", "1:a:0",
+                          "-c:v", "copy", *extra, "-c:a", "aac", "-shortest", out])
+              check(label, out)
           PY
