@@ -89,7 +89,7 @@ class TestBuildAttachArgs:
 
 
 class TestAnnexbArgs:
-    @pytest.mark.parametrize("output", ["out.mpg", "out.mpeg", "out.ts"])
+    @pytest.mark.parametrize("output", ["out.mpg", "out.mpeg"])
     def test_h264_copy_into_program_stream(self, output: str) -> None:
         assert annexb_args(output, "h264") == ["-bsf:v", "h264_mp4toannexb"]
 
@@ -100,7 +100,7 @@ class TestAnnexbArgs:
     def test_other_codecs_need_nothing(self, codec: str | None) -> None:
         assert annexb_args("out.mpg", codec) == []
 
-    @pytest.mark.parametrize("output", ["out.mp4", "out.mkv", "out.mov"])
+    @pytest.mark.parametrize("output", ["out.mp4", "out.mkv", "out.ts"])
     def test_other_containers_need_nothing(self, output: str) -> None:
         assert annexb_args(output, "h264") == []
 

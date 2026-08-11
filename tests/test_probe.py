@@ -323,3 +323,26 @@ class TestProbeViaFfprobe:
         assert info.container == "mp4"
         assert info.fps == "30"
         assert (info.width, info.height) == (160, 120)
+
+
+class TestProbeCrash:
+    def test_signal_killed_ffmpeg_says_so(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import subprocess
+
+        import vidfix.core.probe as pm
+        from vidfix.core.ffmpeg import FFmpegRunner
+        from vidfix.core.probe import probe
+        from vidfix.exceptions import ProbeError
+
+        media = tmp_path / "clip.ts"
+        media.write_bytes(b"x")
+
+        def fake_run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+            return subprocess.CompletedProcess(cmd, returncode=-11, stdout="", stderr="")
+
+        monkeypatch.setattr(pm.subprocess, "run", fake_run)
+        runner = FFmpegRunner(ffmpeg_path="/fake/ffmpeg", ffprobe_path=None)
+        with pytest.raises(ProbeError, match="crashed while opening it"):
+            probe(media, runner=runner)

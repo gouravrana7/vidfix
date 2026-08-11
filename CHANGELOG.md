@@ -9,11 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- `attach` into `.mpg`, `.mpeg` and `.ts` wrote a file whose video was
-  unreadable — the picture stream was copied in a flavour those containers
-  can't describe, and players saw an audio-only file. The stream is now
-  rewrapped on the way in, so the video plays. (`.ts` came out fine on macOS
-  and broken on Linux, which is why it went unnoticed.)
+- `attach` into `.mpg`/`.mpeg` wrote a file whose video was unreadable — the
+  picture stream was copied in a flavour those containers can't describe, and
+  players saw an audio-only file. The stream is now rewrapped on the way in, so
+  the video plays.
+- When the FFmpeg being used crashes while opening a file, `vidfix` says so and
+  points at installing FFmpeg system-wide, instead of blaming the file with
+  `not a recognizable media file`. (The FFmpeg that ships inside vidfix on Linux
+  crashes on any `.ts` file it reads — writing them is unaffected.)
 - `.mxf` output no longer accepts H.264. Those files muxed with broken
   timestamps on every path (`generate`, `convert --codec h264`, `attach`);
   `.mxf` now offers ProRes and MPEG-2, both of which come out clean, and asking

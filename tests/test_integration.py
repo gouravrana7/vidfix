@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import tempfile
+from functools import lru_cache
 from pathlib import Path
 
 import pytest
@@ -494,6 +496,26 @@ H264_BOXES = sorted(
 )
 
 
+@lru_cache(maxsize=1)
+def _reads_mpegts() -> bool:
+    """Some FFmpeg builds segfault opening any .ts file; writing them works fine."""
+    from vidfix.exceptions import ProbeError
+
+    with tempfile.TemporaryDirectory() as tmp:
+        clip = Path(tmp) / "readable.ts"
+        generate(clip, duration="1", res="160x120", audio="none")
+        try:
+            probe(clip)
+        except ProbeError:
+            return False
+        return _decodes(clip)
+
+
+def _skip_unreadable(ext: str) -> None:
+    if ext == "ts" and not _reads_mpegts():
+        pytest.skip("this FFmpeg build crashes reading .ts files")
+
+
 def _has_subtitle(path: Path) -> bool:
     from vidfix.core.ffmpeg import FFmpegRunner
 
@@ -567,6 +589,7 @@ class TestAttach:
     def test_attach_audio_matrix(self, tmp_path: Path, ext: str) -> None:
         from vidfix import attach
 
+        _skip_unreadable(ext)
         base = tmp_path / "base.mp4"
         generate(base, duration="1", res="160x120", audio="none")
         aud = tmp_path / "a.m4a"
@@ -661,6 +684,7 @@ class TestAttach:
         from vidfix import attach
         from vidfix.exceptions import InvalidSpecError
 
+        _skip_unreadable(ext)
         a1, a2 = self._two_audios(tmp_path)
         out = tmp_path / f"multi.{ext}"
         try:

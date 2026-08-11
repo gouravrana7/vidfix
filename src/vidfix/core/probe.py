@@ -260,6 +260,12 @@ def probe(input_path: str | Path, runner: FFmpegRunner | None = None) -> MediaIn
             return parse_ffprobe_json(completed.stdout, str(path))
 
     result = runner.run(["-i", str(path)], check=False)
+    if result.returncode < 0:
+        raise ProbeError(
+            f"Cannot read {path}: the FFmpeg in use crashed while opening it. "
+            "The file itself may be fine — installing FFmpeg system-wide usually "
+            "fixes this, and vidfix will pick it up automatically."
+        )
     return parse_ffmpeg_banner(result.stderr, str(path))
 
 
