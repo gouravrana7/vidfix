@@ -85,11 +85,11 @@ class TestBuildAttachArgs:
 
     def test_burn_into_any_container(self) -> None:
         args = build_attach_args("v.mp4", "out.avi", subs="s.srt", burn=True)
-        assert any("subtitles=" in a for a in args)  # burn bypasses the soft-sub limit
+        assert any("subtitles=" in a for a in args)
 
 
 class TestAnnexbArgs:
-    @pytest.mark.parametrize("output", ["out.mpg", "out.mpeg"])
+    @pytest.mark.parametrize("output", ["out.mpg", "out.mpeg", "out.ts"])
     def test_h264_copy_into_program_stream(self, output: str) -> None:
         assert annexb_args(output, "h264") == ["-bsf:v", "h264_mp4toannexb"]
 
@@ -100,7 +100,7 @@ class TestAnnexbArgs:
     def test_other_codecs_need_nothing(self, codec: str | None) -> None:
         assert annexb_args("out.mpg", codec) == []
 
-    @pytest.mark.parametrize("output", ["out.mp4", "out.mkv", "out.ts"])
+    @pytest.mark.parametrize("output", ["out.mp4", "out.mkv", "out.mov"])
     def test_other_containers_need_nothing(self, output: str) -> None:
         assert annexb_args(output, "h264") == []
 

@@ -31,7 +31,7 @@ SUBTITLE_CODECS = {
 
 ANNEXB_FILTERS = {"h264": "h264_mp4toannexb", "h265": "hevc_mp4toannexb"}
 
-ANNEXB_CONTAINERS = frozenset({".mpg", ".mpeg"})
+ANNEXB_CONTAINERS = frozenset({".mpg", ".mpeg", ".ts"})
 
 
 def subtitle_codec(output: str) -> str:
@@ -44,7 +44,8 @@ def annexb_args(output: str, video_codec: str | None) -> list[str]:
 
     The muxer writes whatever bytes it is handed; length-prefixed h264 (the mp4
     and mkv flavour) goes in without start codes and the video reads back as
-    nothing at all. .ts gets the same filter inserted by FFmpeg itself.
+    nothing at all. Some FFmpeg builds insert the filter for .ts on their own
+    and some do not, so it is always passed explicitly.
     """
     if Path(output).suffix.lower() not in ANNEXB_CONTAINERS:
         return []

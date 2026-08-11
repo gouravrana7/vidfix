@@ -575,7 +575,7 @@ class TestAttach:
         attach(base, out, audio=aud)
         info = probe(out)
         assert info.audio is not None
-        assert info.video_codec != "none"  # the copied video must survive the mux
+        assert info.video_codec != "none"
         assert _decodes(out)
 
     def test_attach_audio_incompatible_container(self, tmp_path: Path) -> None:
