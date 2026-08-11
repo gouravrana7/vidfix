@@ -108,7 +108,7 @@ class TestAudio:
 
     def test_audio_silence_maps_anullsrc_and_shortest(self) -> None:
         p = build_convert_plan("in.mp4", "out.mp4", source(), audio_silence=True)
-        assert any("anullsrc" in a for a in p.args)
+        assert any(a == "anullsrc=r=44100:cl=mono" for a in p.args)
         assert "0:v" in p.args and "1:a" in p.args
         assert "-shortest" in p.args
         assert not p.stream_copy

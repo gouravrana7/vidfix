@@ -96,6 +96,11 @@ class TestBuildGenerateArgs:
         args = build_generate_args("out.mp4", FPS30, 5.0, RES, audio="silence")
         assert any("anullsrc" in a for a in args)
 
+    def test_silence_matches_the_tone_channel_count(self) -> None:
+        """Silence and tone both default to mono, so swapping modes keeps the shape."""
+        args = build_generate_args("out.mp4", FPS30, 5.0, RES, audio="silence")
+        assert any(a == "anullsrc=r=44100:cl=mono" for a in args)
+
     def test_webm_uses_opus(self) -> None:
         args = build_generate_args("out.webm", FPS30, 5.0, RES, codec="vp9")
         assert "libopus" in args

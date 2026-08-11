@@ -258,8 +258,8 @@ vidfix convert in.mp4 --text "SUBTITLE" --position bottom -o out.mp4   # or whil
 
 Positions form a 3×3 grid: `top-left`, `top`, `top-right`, `left`, `center`,
 `right`, `bottom-left`, `bottom` (default), `bottom-right`. The same caption
-options are available on `caption`, `generate`, and `convert`. Audio is
-stream-copied untouched (in `caption`).
+options are available on `caption`, `generate`, and `convert`. In `caption`,
+audio is re-encoded to whatever the output container accepts.
 
 | Option | Meaning | Default |
 |---|---|---|
@@ -302,12 +302,13 @@ vidfix format clip.mp4 -o clip.gif      # palette-optimized gif
 vidfix format photo.png -o photo.webp   # image conversion
 vidfix format clip.mp4 -o thumb.jpg     # first-frame thumbnail
 vidfix format clip.mp4 -o audio.mp3     # extract the audio track
+vidfix format take.wav -o take.flac     # audio to another audio format
 ```
 
 The output extension picks the format — the only option is `-o, --output` (required).
 Video targets: `mp4`, `mov`, `mkv`, `webm`, `avi`, `m4v`, `ts`, `mxf`, `mpg`, `ogv`,
 `flv`, `wmv`, `3gp`, `gif`. Picture targets: `png`, `jpg`, `webp`, `bmp`, `tiff`.
-Audio targets (extract from a video): `wav`, `mp3`, `m4a`, `flac`.
+Audio targets (from a video or another audio file): `wav`, `mp3`, `m4a`, `flac`.
 `generate` and `convert` write those containers too — each picks a codec that plays in it.
 
 ### `vidfix variants` — variant grids in parallel

@@ -68,9 +68,9 @@ def build_format_args(input_path: str, output: str) -> list[str]:
         return [*args, output]
 
     if dst == "audio":
-        if src != "video":
+        if src == "image":
             raise InvalidSpecError(
-                f"Can only extract audio from a video, not from {src}; give a video input."
+                "Can only extract audio from a video or audio file, not from an image."
             )
         return [*args, "-vn", output]
 
@@ -95,6 +95,8 @@ def to_format(
 ) -> Path:
     """Convert any picture or video to the format implied by ``output``'s extension."""
     runner = runner or FFmpegRunner()
+    if not Path(input_path).is_file():
+        raise InvalidSpecError(f"File not found: {input_path}")
     args = build_format_args(str(input_path), str(output))
     if media_kind(str(output)) == "audio":
         from vidfix.core.probe import probe
