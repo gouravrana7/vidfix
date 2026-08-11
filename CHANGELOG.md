@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-08-11
+
+### Fixed
+
+- `attach` into `.mpg`/`.mpeg` wrote a file whose video was unreadable — the
+  picture stream was copied in a flavour those containers can't describe, and
+  players saw an audio-only file. The stream is now rewrapped on the way in, so
+  the video plays.
+- When the FFmpeg being used crashes while opening a file, `vidfix` says so and
+  points at installing FFmpeg system-wide, instead of blaming the file with
+  `not a recognizable media file`. (The FFmpeg that ships inside vidfix on Linux
+  crashes on any `.ts` file it reads — writing them is unaffected.)
+- `.mxf` output no longer accepts H.264. Those files muxed with broken
+  timestamps on every path (`generate`, `convert --codec h264`, `attach`);
+  `.mxf` now offers ProRes and MPEG-2, both of which come out clean, and asking
+  for H.264 gives a one-line message instead of a damaged file.
+- `caption` into `.webm` and `.mxf` failed outright: the audio was copied over
+  untouched into a container that can't hold it. Audio is now re-encoded to
+  whatever the output accepts, so captions land in every video format.
+- `vidfix format` now converts audio to audio (`take.wav` → `take.flac`), which
+  it used to refuse.
+- `--audio silence` wrote a two-channel track while `--audio tone` wrote one, so
+  switching between them quietly changed the channel count. Both are mono now.
+- `vidfix format` on a file that isn't there says `File not found`, like every
+  other command, instead of dumping a raw error.
+
 ## [0.3.0] - 2026-07-20
 
 ### Fixed

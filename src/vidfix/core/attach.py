@@ -29,9 +29,27 @@ SUBTITLE_CODECS = {
 }
 
 
+ANNEXB_FILTERS = {"h264": "h264_mp4toannexb", "h265": "hevc_mp4toannexb"}
+
+ANNEXB_CONTAINERS = frozenset({".mpg", ".mpeg"})
+
+
 def subtitle_codec(output: str) -> str:
     """The soft-subtitle codec the output container wants (mov_text/srt/…)."""
     return SUBTITLE_CODECS.get(Path(output).suffix.lower(), "copy")
+
+
+def annexb_args(output: str, video_codec: str | None) -> list[str]:
+    """Bitstream filter needed to stream-copy h264/h265 into MPEG program streams.
+
+    The muxer writes whatever bytes it is handed; length-prefixed h264 (the mp4
+    and mkv flavour) goes in without start codes and the video reads back as
+    nothing at all. .ts gets the same filter inserted by FFmpeg itself.
+    """
+    if Path(output).suffix.lower() not in ANNEXB_CONTAINERS:
+        return []
+    bsf = ANNEXB_FILTERS.get(video_codec or "")
+    return ["-bsf:v", bsf] if bsf else []
 
 
 def build_attach_args(
@@ -40,10 +58,12 @@ def build_attach_args(
     audios: list[str] | None = None,
     subs: str | None = None,
     burn: bool = False,
+    video_codec: str | None = None,
 ) -> list[str]:
     """Pure builder for the attach/mux FFmpeg argument list.
 
     ``audios`` maps to one output audio track per file, in the order given.
+    ``video_codec`` is the source video codec (vidfix name) when known.
     """
     from vidfix.core.formats import VIDEO_EXTS, validate_output_ext
     from vidfix.core.generate import escape_filter_path
@@ -95,7 +115,7 @@ def build_attach_args(
         args += ["-vf", f"subtitles='{escape_filter_path(subs)}'"]
         args += video_codec_args(default_codec_for(output), output)
     else:
-        args += ["-c:v", "copy"]
+        args += ["-c:v", "copy", *annexb_args(output, video_codec)]
 
     if audio_indices:
         args += audio_codec_args(output)
@@ -124,6 +144,7 @@ def attach(
     ``audio`` may be a single path or a list of paths (one output track each).
     """
     runner = runner or FFmpegRunner()
+    vidfix_codec = None
     if burn:
         from vidfix.core.generate import drawtext_runner
 
@@ -153,6 +174,7 @@ def attach(
         audios=audios,
         subs=str(subs) if subs is not None else None,
         burn=burn,
+        video_codec=vidfix_codec,
     )
     runner.run(args, on_progress=on_progress)
     return Path(output)

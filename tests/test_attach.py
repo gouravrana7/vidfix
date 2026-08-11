@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from vidfix.core.attach import build_attach_args, subtitle_codec
+from vidfix.core.attach import annexb_args, build_attach_args, subtitle_codec
 from vidfix.exceptions import InvalidSpecError
 
 
@@ -85,7 +85,33 @@ class TestBuildAttachArgs:
 
     def test_burn_into_any_container(self) -> None:
         args = build_attach_args("v.mp4", "out.avi", subs="s.srt", burn=True)
-        assert any("subtitles=" in a for a in args)  # burn bypasses the soft-sub limit
+        assert any("subtitles=" in a for a in args)
+
+
+class TestAnnexbArgs:
+    @pytest.mark.parametrize("output", ["out.mpg", "out.mpeg"])
+    def test_h264_copy_into_program_stream(self, output: str) -> None:
+        assert annexb_args(output, "h264") == ["-bsf:v", "h264_mp4toannexb"]
+
+    def test_h265_copy_into_program_stream(self) -> None:
+        assert annexb_args("out.mpg", "h265") == ["-bsf:v", "hevc_mp4toannexb"]
+
+    @pytest.mark.parametrize("codec", ["mpeg2", None])
+    def test_other_codecs_need_nothing(self, codec: str | None) -> None:
+        assert annexb_args("out.mpg", codec) == []
+
+    @pytest.mark.parametrize("output", ["out.mp4", "out.mkv", "out.ts"])
+    def test_other_containers_need_nothing(self, output: str) -> None:
+        assert annexb_args(output, "h264") == []
+
+    def test_builder_adds_filter_for_mpg(self) -> None:
+        args = build_attach_args("v.mp4", "out.mpg", audios=["a.wav"], video_codec="h264")
+        assert args[args.index("-c:v") + 1] == "copy"
+        assert args[args.index("-bsf:v") + 1] == "h264_mp4toannexb"
+
+    def test_builder_skips_filter_when_burning(self) -> None:
+        args = build_attach_args("v.mp4", "out.mpg", subs="s.srt", burn=True, video_codec="h264")
+        assert "-bsf:v" not in args
 
 
 class TestSubtitleCodec:

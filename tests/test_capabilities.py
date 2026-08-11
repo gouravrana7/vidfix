@@ -24,6 +24,7 @@ class TestValidateCodec:
         ("codec", "output"),
         [
             ("h264", "out.webm"),
+            ("h264", "out.mxf"),
             ("prores", "out.mp4"),
             ("h265", "out.wmv"),
             ("vp9", "out.mov"),
@@ -36,7 +37,14 @@ class TestValidateCodec:
 
     @pytest.mark.parametrize(
         ("codec", "output"),
-        [("vp9", "out.webm"), ("theora", "out.ogv"), ("prores", "out.mov"), ("h264", "out.mp4")],
+        [
+            ("vp9", "out.webm"),
+            ("theora", "out.ogv"),
+            ("prores", "out.mov"),
+            ("h264", "out.mp4"),
+            ("prores", "out.mxf"),
+            ("mpeg2", "out.mxf"),
+        ],
     )
     def test_allows_compatible(self, codec: str, output: str) -> None:
         validate_codec(codec, output)

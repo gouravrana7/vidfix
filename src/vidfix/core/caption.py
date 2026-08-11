@@ -12,6 +12,7 @@ from pathlib import Path
 from vidfix.core.ffmpeg import (
     FFmpegRunner,
     ProgressCallback,
+    audio_codec_args,
     default_codec_for,
     video_codec_args,
 )
@@ -90,7 +91,7 @@ def caption(
     runner: FFmpegRunner | None = None,
     on_progress: ProgressCallback | None = None,
 ) -> Path:
-    """Burn a caption into an existing video (audio is stream-copied)."""
+    """Burn a caption into an existing video (audio is re-encoded for the output box)."""
     from vidfix.core.formats import VIDEO_EXTS, validate_output_ext
 
     validate_output_ext(str(output), VIDEO_EXTS)
@@ -113,8 +114,7 @@ def caption(
             "-vf",
             vf,
             *video_codec_args(codec, str(output)),
-            "-c:a",
-            "copy",
+            *audio_codec_args(str(output)),
         ]
         runner.run([*args, str(output)], on_progress=on_progress)
     finally:

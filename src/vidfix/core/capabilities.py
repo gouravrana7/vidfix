@@ -22,7 +22,7 @@ CONTAINER_ALLOWED_CODECS: dict[str, frozenset[str]] = {
     ".webm": frozenset({"vp9"}),
     ".avi": frozenset({"h264", "h265", "vp9", "prores", "mpeg2", "theora"}),
     ".ts": frozenset({"h264", "h265", "mpeg2"}),
-    ".mxf": frozenset({"h264", "prores", "mpeg2"}),
+    ".mxf": frozenset({"prores", "mpeg2"}),
     ".mpg": frozenset({"h264", "h265", "mpeg2"}),
     ".mpeg": frozenset({"h264", "h265", "mpeg2"}),
     ".ogv": frozenset({"theora"}),

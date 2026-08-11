@@ -197,7 +197,7 @@ def build_generate_args(
     if audio == "tone":
         args += ["-f", "lavfi", "-i", f"sine=frequency=440:sample_rate=44100:duration={duration}"]
     elif audio == "silence":
-        args += ["-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo"]
+        args += ["-f", "lavfi", "-i", "anullsrc=r=44100:cl=mono"]
 
     if not audio_only:
         vf = []

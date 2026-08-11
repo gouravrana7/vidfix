@@ -124,7 +124,7 @@ def build_convert_plan(
         ]
         args += ["-map", "0:v", "-map", "1:a"]
     elif audio_silence:
-        args += ["-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo", "-map", "0:v", "-map", "1:a"]
+        args += ["-f", "lavfi", "-i", "anullsrc=r=44100:cl=mono", "-map", "0:v", "-map", "1:a"]
 
     vf: list[str] = []
     if res is not None:

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from vidfix.core.formats import VIDEO_EXTS, build_format_args, media_kind, validate_output_ext
@@ -82,6 +84,11 @@ class TestBuildFormatArgs:
         with pytest.raises(InvalidSpecError, match="Can only extract audio"):
             build_format_args("photo.png", "out.mp3")
 
+    @pytest.mark.parametrize(("src", "output"), [("song.wav", "out.mp3"), ("a.m4a", "b.flac")])
+    def test_audio_to_audio(self, src: str, output: str) -> None:
+        args = build_format_args(src, output)
+        assert args == ["-i", src, "-vn", output]
+
     def test_audio_to_video_rejected(self) -> None:
         with pytest.raises(InvalidSpecError, match="generate"):
             build_format_args("song.mp3", "out.mp4")
@@ -107,3 +114,11 @@ class TestOutputExtGuards:
 
         with pytest.raises(InvalidSpecError, match="no extension"):
             caption("in.mp4", "mxf", text="hi")
+
+
+class TestToFormatInput:
+    def test_missing_input_is_friendly(self, tmp_path: Path) -> None:
+        from vidfix.core.formats import to_format
+
+        with pytest.raises(InvalidSpecError, match="File not found"):
+            to_format(tmp_path / "ghost.mp4", tmp_path / "out.png")

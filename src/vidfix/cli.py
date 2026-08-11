@@ -256,7 +256,7 @@ def caption(
     ] = None,
     end: Annotated[float | None, typer.Option(help="Hide caption after this second.")] = None,
 ) -> None:
-    """Burn a text caption into a video (audio untouched)."""
+    """Burn a text caption into a video."""
     try:
         total = probe_mod.probe(input).duration
         with _ProgressBar(f"caption {output.name}", total) as on_progress:
