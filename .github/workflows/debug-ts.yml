@@ -1,0 +1,48 @@
+name: debug-ts
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  debug:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync --all-extras
+      - name: reproduce the .ts attach
+        run: |
+          uv run python - <<'PY'
+          import subprocess
+          from pathlib import Path
+          from vidfix import generate
+          from vidfix.core.attach import build_attach_args
+          from vidfix.core.ffmpeg import FFmpegRunner, find_ffmpeg, find_ffprobe
+
+          print("ffmpeg:", find_ffmpeg())
+          print("ffprobe:", find_ffprobe())
+          print(subprocess.run([find_ffmpeg(), "-version"], capture_output=True, text=True).stdout[:400])
+
+          generate("base.mp4", duration="1", res="160x120", audio="none")
+          generate("a.m4a", duration="1")
+          args = build_attach_args("base.mp4", "o.ts", audios=["a.m4a"], video_codec="h264")
+          print("ARGS:", args)
+          runner = FFmpegRunner()
+          result = runner.run(args, check=False)
+          print("MUX RC:", result.returncode)
+          print("MUX STDERR:", result.stderr[-3000:])
+          print("SIZE:", Path("o.ts").stat().st_size)
+
+          probe_result = runner.run(["-i", "o.ts"], check=False)
+          print("PROBE RC:", probe_result.returncode)
+          print("PROBE STDERR:", repr(probe_result.stderr[-3000:]))
+
+          raw = subprocess.run([find_ffmpeg(), "-i", "o.ts"], capture_output=True, text=True)
+          print("RAW RC:", raw.returncode)
+          print("RAW STDERR:", raw.stderr[-3000:])
+          PY
