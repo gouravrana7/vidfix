@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.2] - 2026-08-15
+
+### Changed
+
+- License switched from PolyForm Internal Use 1.0.0 to PolyForm Shield 1.0.0 —
+  vidfix may now be used, modified and redistributed for any purpose, including
+  commercial and client work; only building a competing product is reserved.
+
 ## [0.3.1] - 2026-08-11
 
 ### Fixed
