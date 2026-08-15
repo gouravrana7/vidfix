@@ -9,9 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- License switched from PolyForm Internal Use 1.0.0 to PolyForm Shield 1.0.0 —
-  vidfix may now be used, modified and redistributed for any purpose, including
-  commercial and client work; only building a competing product is reserved.
+- License switched from PolyForm Internal Use 1.0.0 to MIT — vidfix may now be
+  used, modified and redistributed by anyone for any purpose, commercial work
+  included. Keep the copyright notice with any copy you pass on.
 
 ## [0.3.1] - 2026-08-11
 

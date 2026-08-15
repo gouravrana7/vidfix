@@ -7,7 +7,7 @@
 [![PyPI](https://img.shields.io/pypi/v/vidfix?cacheSeconds=240)](https://pypi.org/project/vidfix/)
 [![CI](https://github.com/gouravrana7/vidfix/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/gouravrana7/vidfix/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/pypi/pyversions/vidfix?cacheSeconds=240)](https://pypi.org/project/vidfix/)
-[![License](https://img.shields.io/badge/License-PolyForm_Shield-blue.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 *videos, pictures & audio from nothing · any format to any format ·
 multi-track audio · captions & timecode burn-in · pass/fail checks for CI*
@@ -401,9 +401,6 @@ uv run ruff check . && uv run mypy        # lint + strict types
 
 ## License
 
-[PolyForm Shield 1.0.0](LICENSE) — free to use, modify and distribute for any
-purpose, including commercial use and client work. The one restriction: you may
-not use this source to build a product that competes with vidfix. Contributions
-are welcome via pull request.
-
-For licensing outside these terms, get in touch.
+[MIT](LICENSE) — free to use, modify and distribute for any purpose, including
+commercial use and client work. Keep the copyright notice with any copy you
+pass on. Contributions are welcome via pull request.

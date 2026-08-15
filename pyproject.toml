@@ -3,7 +3,7 @@ name = "vidfix"
 version = "0.3.2"
 description = "CLI toolkit to convert, generate, and verify videos and images to exact specs (fps, duration, resolution, format) — test fixtures, CI checks, and everyday conversions."
 readme = "README.md"
-license = { text = "PolyForm-Shield-1.0.0" }
+license = { text = "MIT" }
 authors = [
     { name = "Gourav Rana", email = "gourav.rana70000@gmail.com" }
 ]
@@ -13,7 +13,7 @@ classifiers = [
     "Development Status :: 4 - Beta",
     "Environment :: Console",
     "Intended Audience :: Developers",
-    "License :: Other/Proprietary License",
+    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
