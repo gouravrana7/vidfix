@@ -53,6 +53,7 @@ class TestRunMatrix:
             raise ConversionError("encode failed")
 
         monkeypatch.setattr(mx, "convert", boom)
+        (tmp_path / "in.mp4").touch()
         seen: list[mx.MatrixResult] = []
         results = mx.run_matrix(
             tmp_path / "in.mp4", tmp_path / "out", ["30"], ["720p"], on_result=seen.append

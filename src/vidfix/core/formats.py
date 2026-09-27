@@ -19,7 +19,7 @@ from vidfix.core.ffmpeg import (
 from vidfix.exceptions import InvalidSpecError
 
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tiff", ".tif"}
-AUDIO_EXTS = {".wav", ".mp3", ".m4a", ".flac"}
+AUDIO_EXTS = {".wav", ".mp3", ".m4a", ".flac", ".ogg", ".opus", ".aac"}
 VIDEO_EXTS = {
     ".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v", ".ts", ".gif",
     ".mxf", ".mpg", ".mpeg", ".ogv", ".flv", ".wmv", ".3gp",
@@ -39,6 +39,17 @@ def validate_output_ext(output: str, allowed: set[str], what: str = "output") ->
             f"Can't tell the {what} format of {output!r} ({got}); "
             f"use one of: {', '.join(sorted(e.lstrip('.') for e in allowed))}."
         )
+
+
+def prepare_output(output: str | Path, *inputs: str | Path) -> None:
+    """Refuse to overwrite an input, and create the output's folder if missing."""
+    out = Path(output).resolve()
+    if any(Path(src).resolve() == out for src in inputs):
+        raise InvalidSpecError(f"Output {output} is one of the input files; pick a new name.")
+    try:
+        out.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise InvalidSpecError(f"Can't create the folder for {output}: {exc.strerror}.") from exc
 
 
 def media_kind(path: str) -> str:
@@ -61,6 +72,8 @@ def build_format_args(input_path: str, output: str) -> list[str]:
     args = ["-i", input_path]
 
     if dst == "image":
+        if src == "audio":
+            raise InvalidSpecError("Audio has no picture to save; pick a video or image source.")
         if src == "video":
             args += ["-frames:v", "1"]
         if out_ext in (".jpg", ".jpeg"):
@@ -94,14 +107,13 @@ def to_format(
     on_progress: ProgressCallback | None = None,
 ) -> Path:
     """Convert any picture or video to the format implied by ``output``'s extension."""
-    runner = runner or FFmpegRunner()
-    if not Path(input_path).is_file():
-        raise InvalidSpecError(f"File not found: {input_path}")
-    args = build_format_args(str(input_path), str(output))
-    if media_kind(str(output)) == "audio":
-        from vidfix.core.probe import probe
+    from vidfix.core.probe import probe
 
-        if probe(input_path, runner=runner).audio is None:
-            raise InvalidSpecError(f"{input_path} has no audio track to extract.")
+    runner = runner or FFmpegRunner()
+    args = build_format_args(str(input_path), str(output))
+    source = probe(input_path, runner=runner)
+    if media_kind(str(output)) == "audio" and source.audio is None:
+        raise InvalidSpecError(f"{input_path} has no audio track to extract.")
+    prepare_output(output, input_path)
     runner.run(args, on_progress=on_progress)
     return Path(output)

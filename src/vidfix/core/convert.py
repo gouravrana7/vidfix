@@ -78,7 +78,7 @@ def build_convert_plan(
         raise InvalidSpecError("--audio-layout conflicts with --no-audio.")
     if layout and source.audio is None and not audio_tone:
         raise InvalidSpecError(
-            f"{input_path} has no audio track to reshape; add one with --audio-tone."
+            f"{input_path} has no audio track to reshape; add one with --audio tone."
         )
 
     same_codec = CODEC_PROBE_NAMES[codec] == source.video_codec
@@ -93,7 +93,12 @@ def build_convert_plan(
         and duration is not None
         and duration < source.duration
     )
-    if only_trim and same_codec and not precise:
+    from vidfix.core.capabilities import can_copy_video
+
+    copy_ok = Path(input_path).suffix.lower() == Path(output).suffix.lower() and can_copy_video(
+        input_path, output, codec
+    )
+    if only_trim and same_codec and copy_ok and not precise:
         assert duration is not None
         args = ["-i", input_path, "-t", f"{duration}", "-c", "copy"]
         if no_audio:
@@ -202,8 +207,8 @@ def convert(
     ``audio`` is the unified audio type (keep/tone/silence/none), matching
     ``generate``; the legacy ``no_audio``/``audio_tone`` flags still work.
     """
-    from vidfix.core.caption import caption_filter, write_caption_file
-    from vidfix.core.formats import VIDEO_EXTS, validate_output_ext
+    from vidfix.core.caption import caption_filter, validate_color, write_caption_file
+    from vidfix.core.formats import VIDEO_EXTS, prepare_output, validate_output_ext
     from vidfix.core.generate import drawtext_runner, find_font, timecode_filter
 
     validate_output_ext(str(output), VIDEO_EXTS)
@@ -219,6 +224,10 @@ def convert(
     if text or timecode:
         runner = drawtext_runner(runner)
     source = probe(input_path, runner=runner)
+    if source.video_codec == "none":
+        raise InvalidSpecError(
+            f"{input_path} has no video; use 'vidfix format' to convert audio files."
+        )
 
     parsed_fps = parse_fps(fps) if fps is not None else None
     textfile = write_caption_file(text) if text else None
@@ -257,6 +266,9 @@ def convert(
             precise=precise,
             overlay_vf=overlay_vf,
         )
+        if text:
+            validate_color(color, runner)
+        prepare_output(output, input_path)
         runner.run(plan.args, on_progress=on_progress)
     finally:
         if textfile is not None:

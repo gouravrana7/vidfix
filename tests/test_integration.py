@@ -527,7 +527,7 @@ def _decodes(path: Path) -> bool:
     from vidfix.core.ffmpeg import FFmpegRunner
 
     result = FFmpegRunner().run(["-v", "error", "-i", str(path), "-f", "null", "-"], check=False)
-    return result.returncode == 0
+    return result.returncode == 0 and not result.stderr.strip()
 
 
 SOFT_SUB_BOXES = ["mp4", "mov", "mkv"]
@@ -601,16 +601,16 @@ class TestAttach:
         assert info.video_codec != "none"
         assert _decodes(out)
 
-    def test_attach_audio_incompatible_container(self, tmp_path: Path) -> None:
+    def test_attach_reencodes_for_incompatible_container(self, tmp_path: Path) -> None:
         from vidfix import attach
-        from vidfix.exceptions import InvalidSpecError
 
         base = tmp_path / "base.mp4"  # h264
         generate(base, duration="1", res="160x120")
         aud = tmp_path / "a.m4a"
         generate(aud, duration="1")
-        with pytest.raises(InvalidSpecError, match="can't hold"):
-            attach(base, tmp_path / "o.webm", audio=aud)  # h264 can't be copied into webm
+        out = attach(base, tmp_path / "o.webm", audio=aud)
+        assert probe(out).video_codec == "vp9"
+        assert _decodes(out)
 
     @pytest.mark.parametrize("ext", ["mp4", "mov", "mkv"])
     def test_soft_subs(self, tmp_path: Path, ext: str) -> None:
@@ -972,7 +972,7 @@ class TestWizardEndToEnd:
     def test_generate_flow_writes_the_file(self, tmp_path: Path) -> None:
         result = self._wizard(
             ["generate", "video", "wiz.mkv", "smpte", "none", "25", "1", "160x120",
-             "silence", "mono", "", "n"],
+             "", "silence", "mono", "", "n", "run"],
             tmp_path,
         )  # fmt: skip
         assert result.exit_code == 0, result.output
@@ -984,9 +984,25 @@ class TestWizardEndToEnd:
     def test_bad_answer_reprompts_then_succeeds(self, tmp_path: Path) -> None:
         result = self._wizard(
             ["generate", "video", "retry.mp4", "smpte", "none", "quick", "25", "1", "160x120",
-             "none", "", "n"],
+             "", "none", "", "n", "run"],
             tmp_path,
         )  # fmt: skip
         assert result.exit_code == 0, result.output
         assert "Cannot parse" in result.output
         assert probe(tmp_path / "retry.mp4").fps == "25"
+
+    def test_numbers_work_as_answers(self, tmp_path: Path) -> None:
+        result = self._wizard(
+            ["1", "2", "num.ogg", "1", "2", "1s", "1"],
+            tmp_path,
+        )  # fmt: skip
+        assert result.exit_code == 0, result.output
+        assert "Ready to generate" in result.output
+        info = probe(tmp_path / "num.ogg")
+        assert info.audio is not None and info.audio.channels == 2
+
+    def test_cancel_writes_nothing(self, tmp_path: Path) -> None:
+        result = self._wizard(["generate", "audio-only", "no.wav", "", "", "", "cancel"], tmp_path)
+        assert result.exit_code == 0, result.output
+        assert "nothing was written" in result.output
+        assert not (tmp_path / "no.wav").exists()

@@ -5,6 +5,72 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-09-27
+
+### What's new
+
+- **Easier: no typing, just arrow keys.** Run `vidfix` and every question is a
+  menu — move with ↑↓, press enter. Each choice says what it means
+  ("stereo — left + right", "mp4 — plays everywhere"), questions are numbered,
+  answers turn into ✓ lines, and a summary box lets you Run, Run & open, or
+  Cancel before anything is written. Anything not in a list? Pick **other…**
+  and type it.
+- **Faster: long clips generate several times quicker.** A 60-second 1080p
+  test clip: webm 28 s → 1.8 s, h265 21 s → 6 s, 4K 13 s → 7.5 s, h264
+  3.1 s → 2.2 s — same exact fps, length and size.
+- **Safer: files that would have come out broken are now made correctly or
+  stopped with a clear one-line message.**
+
+### Added
+
+- Wizard picks with the arrow keys, and every choice carries a one-line meaning
+  ("stereo — left + right"). Questions are numbered ("Step 3 ·"), and a summary
+  box with Run / Run & open / Cancel comes before anything is written. Every
+  question is a menu: input files from the current folder, the output file in
+  every format the step can write (or your own name), fps / duration /
+  resolution with "other…" for your own value, caption color and size, yes/no,
+  and tick boxes for variants. A wrong typed value is caught right in the box.
+  Without a real terminal (pipes, CI) the same lists are numbered — answer `2`,
+  the name, or your own value.
+- `--open` on `generate`, `convert`, `caption`, `attach`, `format` and
+  `variants` opens the result when it's written.
+- `.ogg`, `.opus` and `.aac` audio outputs (generate and format), up to 7.1.
+- `python -m vidfix`.
+- `vidfix --version`.
+- `verify()` in Python takes the same spec forms as the CLI (`fps="29.97"`,
+  `duration="2s"`, `res="720p"`).
+
+### Changed
+
+- `generate` is much faster for long clips: webm ~16x, h265 ~3x, h264 ~1.5x
+  (quicker encoder settings for synthetic patterns; `convert` keeps its quality
+  settings for real footage).
+- `attach` re-encodes the video when stream-copying would break the file
+  (burned subtitles, a codec the output can't hold, `.avi`/`.mpg` on either
+  side) instead of refusing — e.g. an h264 clip can now go into `.webm`.
+- Output folders that don't exist yet are created.
+- `.mpg`/`.mpeg` now hold mpeg2 video only — h264 and h265 in them wrote
+  broken timestamps.
+
+### Fixed
+
+- `attach` into or out of `.avi`/`.mpg`/`.mpeg`/`.wmv` wrote files with broken
+  timing or dropped frames while reporting success.
+- `attach --burn` into `.webm`/`.mxf`/`.mpg`/`.ogv` failed on the kept audio.
+- Clear errors instead of raw FFmpeg output for: unknown caption color or size,
+  caption start after end, a missing output folder, writing over the input file,
+  a subtitle file that isn't one, attaching audio from a file with no audio,
+  attaching/captioning/converting a file with no video, `format` from audio to a
+  picture, and unreadable input files.
+- `variants` checks every fps/resolution, the source, and the output folder
+  before running anything (an output path that is a file used to crash).
+- `verify` rejects negative tolerances.
+- Wizard: re-asks a bad caption color on the spot, only offers format targets
+  that fit the source, skips the channel question for a source with no audio,
+  and requires at least one spec to verify.
+- `preset list` shows aliases (`ndf25`) as "same as pal25".
+- `info` called audio pulled out of an mp4 into `.ogg`/`.opus` an "mp4".
+
 ## [0.3.2] - 2026-08-15
 
 ### Changed

@@ -29,10 +29,11 @@ uvx vidfix
 ```
 
 That's it — nothing to install, no setup, no syntax to memorize.
-vidfix asks what you want step by step in plain words, checks every answer
+vidfix asks what you want step by step in plain words — pick with the arrow
+keys, every choice says what it means — checks every answer
 **the moment you type it** (a bad answer re-prompts right there — it never
-runs a job it knows will fail), runs the job, and shows you the equivalent
-one-liner for next time. When it's done it prints the **full path where the
+runs a job it knows will fail), shows a summary to confirm, runs the job (and
+opens the result if you like), and shows you the equivalent one-liner for next time. When it's done it prints the **full path where the
 file was saved**, so you never have to hunt for the output.
 
 ## Install
@@ -44,26 +45,75 @@ pip install vidfix        # or install for keeps (or: uv tool install vidfix)
 
 Everything vidfix needs is built in — install it and it just works.
 
+### Get the newest version
+
+```bash
+uvx vidfix@latest             # uvx: always run the newest release
+pip install -U vidfix         # pip: upgrade in place
+uv tool upgrade vidfix        # uv tool: upgrade in place
+vidfix --version              # check which version you have
+```
+
+Plain `uvx vidfix` may reuse a copy it downloaded earlier — add `@latest`
+to be sure you're on the newest release. See [CHANGELOG.md](CHANGELOG.md)
+for what changed.
+
 ## Quick start
 
 **No syntax needed** — just run `vidfix` and answer the prompts:
 
 ```
 $ vidfix
-What do you want to do? (generate/convert/caption/attach/format/verify/info/variants) [generate]:
-Generate (video/audio-only/picture): video
-formats: 3gp, avi, flv, m4v, mkv, mov, mp4, mpeg, mpg, mxf, ogv, ts, webm, wmv — pick any
-Output file [test.mp4]: fixture.mp4
-Pattern (smpte/color-bars/testsrc/gradient/...): smpte
-Duration (e.g. 30s, 1min, 1:30) [5s]: 10 seconds
-Resolution (e.g. 720p, 1080p, 1280x720) [720p]:
-Audio (tone/silence/none) [tone]: tone
-Audio channels (mono/stereo/5.1/7.1/left/right) [stereo]: 5.1
+╭─ vidfix ────────────────────────────╮
+│ exact-spec media · no syntax needed │
+╰─────────────────────────────────────╯
+✓ Step 1 · What do you want to do?  generate
+✓ Step 2 · Generate  video
+? Step 3 · Output file (↑↓ to move, enter to pick)
+ ❯ test.mp4    plays everywhere
+   test.mov    Apple / editing
+   test.mkv    holds anything
+   test.webm   web video
+   ...
+   other…      type your own value
+```
+
+Pick with the arrow keys, press enter — each answer turns into a ✓ line:
+
+```
+✓ Step 3 · Output file  fixture.mp4
+✓ Step 4 · Pattern  smpte
+✓ Step 5 · Preset  none
+✓ Step 6 · fps  30
+✓ Step 7 · Duration  10s
+✓ Step 8 · Resolution  1080p
+✓ Step 9 · Codec  auto
+✓ Step 10 · Audio  tone
+✓ Step 11 · Audio channels  5.1
+✓ Step 12 · Caption text  Hello
 ...
-equivalent command: vidfix generate --pattern smpte --duration '10 seconds' --audio-layout 5.1 -o fixture.mp4
+╭─ Ready to generate ───────────╮
+│ pattern         smpte         │
+│ fps             30            │
+│ duration        10s           │
+│ audio channels  5.1           │
+│ resolution      1080p         │
+│ caption         Hello         │
+│ output          fixture.mp4   │
+╰───────────────────────────────╯
+equivalent command: vidfix generate --pattern smpte --fps 30 --duration 10s --audio-layout 5.1 --res 1080p --text Hello -o fixture.mp4
+
+✓ Step 18 · Go ahead?  run & open
 ✓ wrote fixture.mp4
   location: /Users/you/clips/fixture.mp4
 ```
+
+Every question is a menu: files from the current folder, the output file in
+every format it can write (or type your own name), fps / duration / resolution
+with an **other…** entry for your own value, caption color and size, yes/no —
+and tick boxes for `variants`. A wrong typed value is caught right in the box. No arrow
+keys (a pipe, CI, a basic terminal)? The same questions come as a numbered
+list — type `2`, the name, or your own value.
 
 Every answer is validated on the spot and the equivalent one-liner is printed
 so you can script it next time. Answer the output prompt with just a format
@@ -174,7 +224,7 @@ Audio: 440Hz `tone` (default), `silence`, `none` — any layout from `mono` to
 `7.1`, or `left`/`right` for channel-identification checks.
 
 The output extension picks the media kind: video (`.mp4`, `.mov`, …),
-audio-only (`.wav`, `.mp3`, `.m4a`, `.flac`), or a still picture
+audio-only (`.wav`, `.mp3`, `.m4a`, `.flac`, `.ogg`, `.opus`, `.aac`), or a still picture
 (`.png`, `.jpg`, `.jpeg`, `.webp`, `.bmp`, `.tiff`).
 
 | Option | Meaning | Default |
@@ -285,11 +335,12 @@ vidfix attach clip.mp4 --audio track.m4a --subs subs.srt -o out.mkv # all at onc
 |---|---|---|
 | `-o, --output` | Output file path | required |
 | `--audio` | Audio file to add as a track (repeat for multiple tracks) | — |
-| `--subs` | Subtitle file (.srt/.vtt) to add | — |
+| `--subs` | Subtitle file (.srt/.vtt/.ass/.ssa) to add | — |
 | `--burn` | Burn subtitles into the picture (else a soft, toggle-able track) | off |
 
-The video is stream-copied (no re-encode, no quality loss) unless subtitles are
-burned in. Repeat `--audio` to add several tracks (one per file, in order) — it
+The video is stream-copied (no re-encode, no quality loss) whenever the output
+can hold it cleanly; otherwise — burned subtitles, a codec the output can't hold,
+or `.avi`/`.mpg` on either side — it is re-encoded so the file always plays. Repeat `--audio` to add several tracks (one per file, in order) — it
 works on any video, including a `vidfix generate` clip. `.flv` holds only one
 audio track; use `.mkv`/`.mp4`/`.mov` for more. Soft subtitles need a
 `.mp4`/`.mov`/`.mkv`/`.webm` output — for other containers use `--burn`.
@@ -308,7 +359,12 @@ vidfix format take.wav -o take.flac     # audio to another audio format
 The output extension picks the format — the only option is `-o, --output` (required).
 Video targets: `mp4`, `mov`, `mkv`, `webm`, `avi`, `m4v`, `ts`, `mxf`, `mpg`, `ogv`,
 `flv`, `wmv`, `3gp`, `gif`. Picture targets: `png`, `jpg`, `webp`, `bmp`, `tiff`.
-Audio targets (from a video or another audio file): `wav`, `mp3`, `m4a`, `flac`.
+Audio targets (from a video or another audio file): `wav`, `mp3`, `m4a`, `flac`,
+`ogg`, `opus`, `aac`.
+
+Add `--open` to `generate`, `convert`, `caption`, `attach`, `format` or `variants`
+to open the result as soon as it's written. `vidfix --version` prints the version;
+`python -m vidfix` works too.
 `generate` and `convert` write those containers too — each picks a codec that plays in it.
 
 ### `vidfix variants` — variant grids in parallel

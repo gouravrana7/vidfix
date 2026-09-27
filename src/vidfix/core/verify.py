@@ -7,9 +7,10 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
-from vidfix.core.duration import Resolution
+from vidfix.core.duration import Resolution, parse_duration, parse_fps, parse_resolution
 from vidfix.core.ffmpeg import CODEC_PROBE_NAMES, FFmpegRunner
 from vidfix.core.probe import MediaInfo, probe
+from vidfix.exceptions import InvalidSpecError
 
 DEFAULT_FPS_TOLERANCE = 0.01
 DEFAULT_DURATION_TOLERANCE = 0.1
@@ -42,6 +43,8 @@ def check_specs(
     duration_tolerance: float = DEFAULT_DURATION_TOLERANCE,
 ) -> VerifyResult:
     """Pure comparison of probed metadata against expected specs."""
+    if fps_tolerance < 0 or duration_tolerance < 0:
+        raise InvalidSpecError("Tolerances can't be negative.")
     checks: list[PropertyCheck] = []
 
     if fps is not None:
@@ -89,21 +92,25 @@ def check_specs(
 
 def verify(
     input_path: str | Path,
-    fps: Fraction | None = None,
-    duration: float | None = None,
-    res: Resolution | None = None,
+    fps: str | float | Fraction | None = None,
+    duration: str | float | None = None,
+    res: str | Resolution | None = None,
     codec: str | None = None,
     fps_tolerance: float = DEFAULT_FPS_TOLERANCE,
     duration_tolerance: float = DEFAULT_DURATION_TOLERANCE,
     runner: FFmpegRunner | None = None,
 ) -> VerifyResult:
-    """Probe a file and check it against the given specs."""
+    """Probe a file and check it against the given specs.
+
+    Specs take the same forms as the CLI: ``fps="29.97"``, ``duration="2s"``,
+    ``res="720p"`` (or already-parsed values).
+    """
     info = probe(input_path, runner=runner)
     return check_specs(
         info,
-        fps=fps,
-        duration=duration,
-        res=res,
+        fps=parse_fps(fps) if fps is not None else None,
+        duration=parse_duration(duration) if duration is not None else None,
+        res=res if isinstance(res, Resolution) or res is None else parse_resolution(res),
         codec=codec,
         fps_tolerance=fps_tolerance,
         duration_tolerance=duration_tolerance,

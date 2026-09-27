@@ -102,3 +102,12 @@ class TestValidateAudioStreamCount:
     def test_caps(self) -> None:
         assert max_audio_streams("out.flv") == 1
         assert max_audio_streams("out.mp4") is None
+
+
+@pytest.mark.parametrize("codec", ["h264", "h265"])
+@pytest.mark.parametrize("box", ["x.mpg", "x.mpeg"])
+def test_program_stream_is_mpeg2_only(codec: str, box: str) -> None:
+    from vidfix.core.capabilities import validate_codec
+
+    with pytest.raises(InvalidSpecError, match="use one of: mpeg2"):
+        validate_codec(codec, box)

@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from vidfix.core.formats import VIDEO_EXTS, build_format_args, media_kind, validate_output_ext
-from vidfix.exceptions import InvalidSpecError
+from vidfix.exceptions import InvalidSpecError, VidfixError
 
 
 class TestMediaKind:
@@ -120,5 +120,5 @@ class TestToFormatInput:
     def test_missing_input_is_friendly(self, tmp_path: Path) -> None:
         from vidfix.core.formats import to_format
 
-        with pytest.raises(InvalidSpecError, match="File not found"):
+        with pytest.raises(VidfixError, match="File not found"):
             to_format(tmp_path / "ghost.mp4", tmp_path / "out.png")

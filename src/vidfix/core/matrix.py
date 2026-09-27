@@ -65,9 +65,28 @@ def run_matrix(
     jobs: int | None = None,
     on_result: Callable[[MatrixResult], None] | None = None,
 ) -> list[MatrixResult]:
-    """Convert all variants in parallel FFmpeg processes; never raises per-variant."""
+    """Convert all variants in parallel FFmpeg processes; never raises per-variant.
+
+    Bad inputs (missing source, unparseable fps/res, unusable codec or output
+    folder) raise up front, before any variant runs.
+    """
+    from vidfix.core.duration import parse_fps, parse_resolution
+    from vidfix.core.ffmpeg import video_codec_args
+
+    if not Path(input_path).is_file():
+        raise InvalidSpecError(f"File not found: {input_path}")
+    if jobs is not None and jobs < 0:
+        raise InvalidSpecError(f"--jobs must be 0 or more, got {jobs}.")
+    for fps in fps_list:
+        parse_fps(fps)
+    for res in res_list:
+        parse_resolution(res)
     planned = plan_matrix(str(input_path), str(outdir), fps_list, res_list)
-    Path(outdir).mkdir(parents=True, exist_ok=True)
+    video_codec_args(codec, str(planned[0].output))
+    try:
+        Path(outdir).mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise InvalidSpecError(f"Can't use {outdir} as the output folder: {exc.strerror}.") from exc
     runner = FFmpegRunner()
 
     def run_one(job: MatrixJob) -> MatrixResult:
