@@ -36,6 +36,23 @@ runs a job it knows will fail), shows a summary to confirm, runs the job (and
 opens the result if you like), and shows you the equivalent one-liner for next time. When it's done it prints the **full path where the
 file was saved**, so you never have to hunt for the output.
 
+## Or use it from Python
+
+Same features, one import — the same spec forms as the command line:
+
+```python
+from vidfix import convert, generate, verify, probe
+
+generate("fixture.mp4", fps="59.94", duration="30s", res="720p")
+info = probe("fixture.mp4")           # MediaInfo (pydantic)
+result = verify("fixture.mp4", duration=30.0)
+assert result.passed
+```
+
+Every function takes `str` or `Path`, frame rates as `"29.97"`, `29.97` or
+`Fraction(30000, 1001)`, and raises `vidfix.VidfixError` with a readable
+message when something can't be done.
+
 ## Install
 
 ```bash
@@ -411,17 +428,6 @@ With `--timecode`, DF presets burn semicolon drop-frame notation and NDF/PAL/fil
 presets colon notation, matching broadcast convention. Aliases (`alias: pal25`)
 work in user presets too. Add your own in `~/.config/vidfix/presets.yaml`;
 explicit flags always override.
-
-## Python API
-
-```python
-from vidfix import convert, generate, verify, probe
-
-generate("fixture.mp4", fps="59.94", duration="30s", res="720p")
-info = probe("fixture.mp4")           # MediaInfo (pydantic)
-result = verify("fixture.mp4", duration=30.0)
-assert result.passed
-```
 
 ## vidfix vs moviepy vs raw FFmpeg
 
