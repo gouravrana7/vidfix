@@ -129,9 +129,10 @@ def caption(
     from vidfix.core.probe import probe
 
     validate_output_ext(str(output), VIDEO_EXTS)
-    runner = drawtext_runner(runner or FFmpegRunner())
+    runner = runner or FFmpegRunner()
     if probe(input_path, runner=runner).video_codec == "none":
         raise InvalidSpecError(f"{input_path} has no video to caption.")
+    runner = drawtext_runner(runner)
     textfile = write_caption_file(text)
     try:
         vf = caption_filter(

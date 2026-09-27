@@ -474,7 +474,8 @@ class TestOutputMenu:
 
     def test_single_format_still_a_menu(self, monkeypatch: pytest.MonkeyPatch) -> None:
         Script(monkeypatch, [""])
-        assert interactive.ask_output("a/in.gif", suggest={".gif"}) == "a/in.gif"
+        out = interactive.ask_output(str(Path("a") / "in.gif"), suggest={".gif"})
+        assert Path(out) == Path("a") / "in.gif"
 
     def test_gif_not_suggested_for_encode_flows(self) -> None:
         assert ".gif" not in interactive.ENCODE_EXTS

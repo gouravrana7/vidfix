@@ -221,13 +221,13 @@ def convert(
     audio_silence = audio == "silence"
 
     runner = runner or FFmpegRunner()
-    if text or timecode:
-        runner = drawtext_runner(runner)
     source = probe(input_path, runner=runner)
     if source.video_codec == "none":
         raise InvalidSpecError(
             f"{input_path} has no video; use 'vidfix format' to convert audio files."
         )
+    if text or timecode:
+        runner = drawtext_runner(runner)
 
     parsed_fps = parse_fps(fps) if fps is not None else None
     textfile = write_caption_file(text) if text else None
