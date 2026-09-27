@@ -20,10 +20,6 @@ build/
 coverage.xml
 htmlcov/
 
-# Local-only session notes (never publish)
-CLAUDE.md
-plan.md
-
 # Editors / OS
 .idea/
 .vscode/
@@ -35,4 +31,3 @@ plan.md
 *.webm
 *.mkv
 !tests/fixtures/*.mp4
-.claude/

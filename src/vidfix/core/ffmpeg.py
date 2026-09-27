@@ -30,6 +30,12 @@ VIDEO_CODECS: dict[str, tuple[str, ...]] = {
     "theora": ("-c:v", "libtheora", "-q:v", "7"),
 }  # fmt: skip
 
+FAST_OVERRIDES: dict[str, tuple[str, ...]] = {
+    "h264": ("-preset", "veryfast"),
+    "h265": ("-preset", "ultrafast"),
+    "vp9": ("-deadline", "realtime", "-cpu-used", "8", "-row-mt", "1"),
+}
+
 CODEC_PROBE_NAMES: dict[str, str] = {
     "h264": "h264",
     "h265": "hevc",
@@ -53,11 +59,13 @@ def default_codec_for(output: str) -> str:
     return CONTAINER_CODECS.get(Path(output).suffix.lower(), "h264")
 
 
-def video_codec_args(codec: str, output: str | None = None) -> list[str]:
+def video_codec_args(codec: str, output: str | None = None, fast: bool = False) -> list[str]:
     """Encoder arguments for a supported codec name.
 
     When ``output`` is given, codecs the target container can't hold fail early
     with a friendly message instead of a cryptic (or silently broken) FFmpeg run.
+    ``fast`` swaps in quicker encoder settings (FAST_OVERRIDES) — right for
+    synthetic test patterns, where compression efficiency doesn't matter.
     """
     if codec not in VIDEO_CODECS:
         supported = ", ".join(sorted(VIDEO_CODECS))
@@ -70,7 +78,14 @@ def video_codec_args(codec: str, output: str | None = None) -> list[str]:
         from vidfix.core.capabilities import validate_codec
 
         validate_codec(codec, output)
-    return list(VIDEO_CODECS[codec])
+    args = list(VIDEO_CODECS[codec])
+    extra = FAST_OVERRIDES.get(codec, ()) if fast else ()
+    for flag, value in zip(extra[::2], extra[1::2], strict=True):
+        if flag in args:
+            args[args.index(flag) + 1] = value
+        else:
+            args += [flag, value]
+    return args
 
 
 _CONTAINER_AUDIO: dict[str, list[str]] = {

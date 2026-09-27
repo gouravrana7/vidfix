@@ -23,8 +23,8 @@ CONTAINER_ALLOWED_CODECS: dict[str, frozenset[str]] = {
     ".avi": frozenset({"h264", "h265", "vp9", "prores", "mpeg2", "theora"}),
     ".ts": frozenset({"h264", "h265", "mpeg2"}),
     ".mxf": frozenset({"prores", "mpeg2"}),
-    ".mpg": frozenset({"h264", "h265", "mpeg2"}),
-    ".mpeg": frozenset({"h264", "h265", "mpeg2"}),
+    ".mpg": frozenset({"mpeg2"}),
+    ".mpeg": frozenset({"mpeg2"}),
     ".ogv": frozenset({"theora"}),
     ".flv": frozenset({"h264", "vp9"}),
     ".wmv": frozenset({"h264", "vp9", "mpeg2", "theora"}),
@@ -52,6 +52,26 @@ def _ext(output: str) -> str:
 def allowed_codecs(output: str) -> frozenset[str] | None:
     """Codecs the container can hold, or None if it imposes no restriction."""
     return CONTAINER_ALLOWED_CODECS.get(_ext(output))
+
+
+NO_COPY_SOURCES = frozenset({".avi", ".wmv", ".mpg", ".mpeg"})
+
+NO_COPY_TARGETS = frozenset({".avi", ".mpg", ".mpeg"})
+
+
+def can_copy_video(source: str, output: str, codec: str | None) -> bool:
+    """True when the source video stream can be copied into ``output`` cleanly.
+
+    avi/wmv/mpg sources carry no reliable timestamps, and avi/mpg targets want
+    start-code h264; copying across those writes broken timing or drops frames.
+    """
+    allowed = allowed_codecs(output)
+    return (
+        codec is not None
+        and (allowed is None or codec in allowed)
+        and _ext(source) not in NO_COPY_SOURCES
+        and _ext(output) not in NO_COPY_TARGETS
+    )
 
 
 def allowed_fps(output: str) -> frozenset[float] | None:

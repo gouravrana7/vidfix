@@ -34,8 +34,21 @@ console = Console()
 err_console = Console(stderr=True)
 
 
+def _show_version(value: bool) -> None:
+    if value:
+        from vidfix import __version__
+
+        console.print(f"vidfix {__version__}")
+        raise typer.Exit()
+
+
 @app.callback(invoke_without_command=True)
-def main(ctx: typer.Context) -> None:
+def main(
+    ctx: typer.Context,
+    version: bool = typer.Option(
+        False, "--version", callback=_show_version, is_eager=True, help="Show the version and exit."
+    ),
+) -> None:
     """vidfix — exact-spec media, no syntax required (just run `vidfix`)."""
     if ctx.invoked_subcommand is None:
         from vidfix.interactive import wizard
@@ -48,9 +61,14 @@ def _fail(error: Exception) -> NoReturn:
     raise typer.Exit(code=1)
 
 
-def _wrote(path: Path, note: str = "") -> None:
+OpenFlag = Annotated[bool, typer.Option("--open", help="Open the result when done.")]
+
+
+def _wrote(path: Path, note: str = "", open_file: bool = False) -> None:
     console.print(f"[green]✓[/green] wrote {path}{note}")
     console.print(f"  [dim]location:[/dim] {path.resolve()}")
+    if open_file:
+        typer.launch(str(path.resolve()))
 
 
 _PIX_FMT_NAMES = {
@@ -198,6 +216,7 @@ def generate(
     preset: Annotated[
         str | None, typer.Option(help="Preset name for defaults ('vidfix preset list').")
     ] = None,
+    open_: OpenFlag = False,
 ) -> None:
     """Create a synthetic test video with exact specs — no source file needed."""
     try:
@@ -228,7 +247,7 @@ def generate(
             )
     except VidfixError as exc:
         _fail(exc)
-    _wrote(output)
+    _wrote(output, open_file=open_)
 
 
 @app.command(
@@ -255,6 +274,7 @@ def caption(
         float | None, typer.Option(help="Show caption from this second onward.")
     ] = None,
     end: Annotated[float | None, typer.Option(help="Hide caption after this second.")] = None,
+    open_: OpenFlag = False,
 ) -> None:
     """Burn a text caption into a video."""
     try:
@@ -273,7 +293,7 @@ def caption(
             )
     except VidfixError as exc:
         _fail(exc)
-    _wrote(output)
+    _wrote(output, open_file=open_)
 
 
 @app.command(
@@ -299,6 +319,7 @@ def attach(
     burn: Annotated[
         bool, typer.Option("--burn", help="Burn subtitles into the picture (else a soft track).")
     ] = False,
+    open_: OpenFlag = False,
 ) -> None:
     """Attach an existing audio track and/or subtitle onto a video."""
     try:
@@ -309,7 +330,7 @@ def attach(
             )
     except VidfixError as exc:
         _fail(exc)
-    _wrote(output)
+    _wrote(output, open_file=open_)
 
 
 @app.command(
@@ -396,6 +417,7 @@ def convert(
     timecode: Annotated[
         bool, typer.Option("--timecode", help="Burn in a running timecode.")
     ] = False,
+    open_: OpenFlag = False,
 ) -> None:
     """Transform an existing video to exact specs (stream-copies when possible)."""
     try:
@@ -435,7 +457,7 @@ def convert(
     for warning in plan.warnings:
         err_console.print(f"[yellow]warning:[/yellow] {warning}")
     mode = "stream copy" if plan.stream_copy else "re-encode"
-    _wrote(output, f" ({mode})")
+    _wrote(output, f" ({mode})", open_file=open_)
 
 
 @app.command(
@@ -453,6 +475,7 @@ def format_cmd(
     output: Annotated[
         Path, typer.Option("-o", "--output", help="Output path; extension picks the format.")
     ],
+    open_: OpenFlag = False,
 ) -> None:
     """Convert any picture or video to any other format (by output extension)."""
     try:
@@ -467,7 +490,7 @@ def format_cmd(
             formats_mod.to_format(input, output)
     except VidfixError as exc:
         _fail(exc)
-    _wrote(output)
+    _wrote(output, open_file=open_)
 
 
 @app.command(
@@ -610,6 +633,7 @@ def matrix(
     jobs: Annotated[
         int | None, typer.Option(help="Parallel FFmpeg processes (default: min(4, cpus)).")
     ] = None,
+    open_: OpenFlag = False,
 ) -> None:
     """Generate the cartesian product of fps x resolution variants."""
     from rich.progress import BarColumn, Progress, TextColumn
@@ -648,6 +672,8 @@ def matrix(
         table.add_row(r.job.fps, r.job.res, r.job.output.name, mark)
     console.print(table)
     console.print(f"  [dim]location:[/dim] {outdir.resolve()}")
+    if open_:
+        typer.launch(str(outdir.resolve()))
     if not all(r.ok for r in results):
         raise typer.Exit(code=1)
 
@@ -671,7 +697,9 @@ def preset_list() -> None:
     table.add_column("description")
     table.add_column("settings")
     for name, settings in sorted(presets.items()):
-        description = settings.get("description", "")
+        description = settings.get("description") or (
+            f"same as {settings['alias']}" if "alias" in settings else ""
+        )
         rest = ", ".join(f"{k}={v}" for k, v in settings.items() if k != "description")
         table.add_row(name, description, rest)
     console.print(table)

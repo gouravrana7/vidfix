@@ -12,75 +12,115 @@
 *videos, pictures & audio from nothing · any format to any format ·
 multi-track audio · captions & timecode burn-in · pass/fail checks for CI*
 
+[What it does](#what-it-does) · [Wizard](#no-commands-to-learn) · [Python](#use-it-from-python) · [Install](#install) · [Commands](#commands) · [CI](#ci-usage)
+
 </div>
 
-**vidfix** is a CLI-first media toolkit. It creates any video, picture, or
-audio file from nothing, converts anything to any format, muxes audio and
-subtitles together, and forces existing files to exact specs — fps, duration,
-resolution, codec, audio channels. Then it proves it: `vidfix info` reads any
-file back in plain words, `vidfix verify` turns specs into pass/fail exit
-codes for CI. Built for anyone — developers, testers, creators, or someone
-who just wants a file converted.
+**vidfix** is a CLI-first media toolkit for developers, testers, creators — or
+anyone who just needs a file in the right shape. Tell it the fps, length, size,
+codec or format you want; it makes the file, then proves it.
 
-## No commands to learn. It talks to you.
+## What it does
+
+| You want to… | Run |
+|---|---|
+| Make a test video, sound or picture from nothing | `vidfix generate -o clip.mp4 --fps 60 --duration 30s --res 1080p` |
+| Force a video to exact fps / length / size / codec | `vidfix convert in.mov --fps 29.97 --res 720p -o out.mp4` |
+| Turn any file into any other format | `vidfix format clip.mov -o clip.gif` |
+| Burn text or a running timecode onto video | `vidfix caption in.mp4 --text "Take 42" -o out.mp4` |
+| Add audio tracks or subtitles to a video | `vidfix attach in.mp4 --audio en.wav --subs en.srt -o out.mkv` |
+| Read what's inside a file, in plain words | `vidfix info clip.mp4` |
+| Check a file in CI (exit 0 pass / 1 fail) | `vidfix verify out.mp4 --fps 60 --res 1080p` |
+| Make every fps × size combination at once | `vidfix variants in.mp4 --fps 30,60 --res 720p,1080p -o out/` |
+
+## No commands to learn
 
 ```bash
 uvx vidfix
 ```
 
-That's it — nothing to install, no setup, no syntax to memorize.
-vidfix asks what you want step by step in plain words, checks every answer
-**the moment you type it** (a bad answer re-prompts right there — it never
-runs a job it knows will fail), runs the job, and shows you the equivalent
-one-liner for next time. When it's done it prints the **full path where the
-file was saved**, so you never have to hunt for the output.
+Run it with no arguments and vidfix asks what you want — no install, no syntax:
 
-## Install
-
-```bash
-uvx vidfix                # try instantly — no install
-pip install vidfix        # or install for keeps (or: uv tool install vidfix)
-```
-
-Everything vidfix needs is built in — install it and it just works.
-
-## Quick start
-
-**No syntax needed** — just run `vidfix` and answer the prompts:
+- **Arrow keys, not typing.** Every question is a menu, and every choice says
+  what it means. Need something not listed? Pick **other…** and type it.
+- **Mistakes are caught on the spot.** A bad answer is re-asked right there;
+  the wizard never offers a choice the chosen format can't make.
+- **You see it before it runs.** A summary box, then run, run & open, or cancel.
+- **You learn the one-liner.** The equivalent command is printed for next time,
+  and the full path of the saved file when it's done.
 
 ```
 $ vidfix
-What do you want to do? (generate/convert/caption/attach/format/verify/info/variants) [generate]:
-Generate (video/audio-only/picture): video
-formats: 3gp, avi, flv, m4v, mkv, mov, mp4, mpeg, mpg, mxf, ogv, ts, webm, wmv — pick any
-Output file [test.mp4]: fixture.mp4
-Pattern (smpte/color-bars/testsrc/gradient/...): smpte
-Duration (e.g. 30s, 1min, 1:30) [5s]: 10 seconds
-Resolution (e.g. 720p, 1080p, 1280x720) [720p]:
-Audio (tone/silence/none) [tone]: tone
-Audio channels (mono/stereo/5.1/7.1/left/right) [stereo]: 5.1
+╭─ vidfix ────────────────────────────╮
+│ exact-spec media · no syntax needed │
+╰─────────────────────────────────────╯
+✓ Step 1 · What do you want to do?  generate
+✓ Step 2 · Generate  video
+? Step 3 · Output file (↑↓ to move, enter to pick)
+ ❯ test.mp4    plays everywhere
+   test.mov    Apple / editing
+   test.mkv    holds anything
+   test.webm   web video
+   ...
+   other…      type your own value
+```
+
+```
+✓ Step 3 · Output file  fixture.mp4
+✓ Step 6 · fps  30
+✓ Step 7 · Duration  10s
+✓ Step 8 · Resolution  1080p
+✓ Step 11 · Audio channels  5.1
 ...
-equivalent command: vidfix generate --pattern smpte --duration '10 seconds' --audio-layout 5.1 -o fixture.mp4
+╭─ Ready to generate ───────────╮
+│ pattern         smpte         │
+│ fps             30            │
+│ duration        10s           │
+│ audio channels  5.1           │
+│ resolution      1080p         │
+│ output          fixture.mp4   │
+╰───────────────────────────────╯
+equivalent command: vidfix generate --pattern smpte --fps 30 --duration 10s --audio-layout 5.1 --res 1080p -o fixture.mp4
+
+✓ Step 18 · Go ahead?  run & open
 ✓ wrote fixture.mp4
   location: /Users/you/clips/fixture.mp4
 ```
 
-Every answer is validated on the spot and the equivalent one-liner is printed
-so you can script it next time. Answer the output prompt with just a format
-name (`mxf`) and vidfix names the file for you (`fixture.mxf`). Check the
-result any time with `vidfix info fixture.mp4` or assert it with
-`vidfix verify`. Or go straight to the flags:
+No arrow keys (a pipe, CI, a basic terminal)? The same questions come as a
+numbered list — answer `2`, the name, or your own value.
+
+## Use it from Python
+
+Same features, one import, the same spec forms as the command line:
+
+```python
+from vidfix import convert, generate, verify, probe
+
+generate("fixture.mp4", fps="59.94", duration="30s", res="720p")
+info = probe("fixture.mp4")           # MediaInfo (pydantic)
+result = verify("fixture.mp4", duration=30.0)
+assert result.passed
+```
+
+Every function takes `str` or `Path`, frame rates as `"29.97"`, `29.97` or
+`Fraction(30000, 1001)`, and raises `vidfix.VidfixError` with a readable
+message when something can't be done.
+
+## Install
 
 ```bash
-# A 60fps, 30s, 720p SMPTE-bars clip with a burned-in timecode
-vidfix generate -o fixture.mp4 --fps 60 --duration 30s --res 720p --timecode
+uvx vidfix                  # run instantly, nothing to install
+pip install vidfix          # or keep it (or: uv tool install vidfix)
 
-# Force real footage to exact specs
-vidfix convert raw.mov --fps 29.97 --duration 10s --res 1280x720 -o fixture.mp4
-
-# Assert specs in CI (exit 0 pass / 1 fail)
-vidfix verify fixture.mp4 --fps 29.97 --duration 10s --res 1280x720
+uvx vidfix@latest           # newest release with uvx
+pip install -U vidfix       # upgrade with pip (or: uv tool upgrade vidfix)
+vidfix --version            # which version you have
 ```
+
+Everything vidfix needs is built in. Plain `uvx vidfix` may reuse a copy it
+downloaded earlier — add `@latest` to be sure you're on the newest release.
+What changed: [CHANGELOG.md](CHANGELOG.md).
 
 ## It refuses to write a broken file
 
@@ -105,7 +145,7 @@ format can't make.
 
 ## Commands
 
-Everything vidfix can do, at a glance (details in the sections below):
+Every command has `--help`. The same options are in the wizard.
 
 | Command | What it does |
 |---|---|
@@ -113,15 +153,16 @@ Everything vidfix can do, at a glance (details in the sections below):
 | `vidfix generate` | Create synthetic test media to exact specs — videos, audio-only files, or still pictures; patterns, tones, channel layouts, timecode burn-in, no source file needed |
 | `vidfix convert` | Force an existing video to exact fps / duration / resolution / codec (stream-copies when possible) |
 | `vidfix caption` | Burn a text caption into a video — position, size, color, optional start/end window |
-| `vidfix attach` | Mux an existing audio file and/or subtitle (.srt/.vtt) onto a video — soft track or `--burn`-ed in |
+| `vidfix attach` | Add audio tracks and/or a subtitle (.srt/.vtt/.ass/.ssa) to a video — soft track or `--burn`-ed in |
 | `vidfix format` | Convert any picture or video to any other format by output extension (incl. palette-optimized GIF, thumbnails, audio extraction) |
 | `vidfix verify` | Assert a file matches specs; exit 0 pass / 1 fail — wire straight into CI |
 | `vidfix info` | Show a file's details in plain words: type, duration, fps, resolution, codecs (`--json` for scripts) |
 | `vidfix variants` | Generate the fps × resolution cartesian product of variants, in parallel |
 | `vidfix preset list` / `preset show` | Inspect built-in + user presets (broadcast rate family, see [Presets](#presets)) |
 
-`info` and `variants` were previously named `probe` and `matrix`; the old names
-still work as hidden aliases, so existing scripts keep running.
+Handy on every command that writes a file: `--open` opens the result when
+it's done. `python -m vidfix` works too. (`probe` and `matrix` still work as
+old names for `info` and `variants`.)
 
 ### `vidfix convert` — exact-spec transforms
 
@@ -174,7 +215,7 @@ Audio: 440Hz `tone` (default), `silence`, `none` — any layout from `mono` to
 `7.1`, or `left`/`right` for channel-identification checks.
 
 The output extension picks the media kind: video (`.mp4`, `.mov`, …),
-audio-only (`.wav`, `.mp3`, `.m4a`, `.flac`), or a still picture
+audio-only (`.wav`, `.mp3`, `.m4a`, `.flac`, `.ogg`, `.opus`, `.aac`), or a still picture
 (`.png`, `.jpg`, `.jpeg`, `.webp`, `.bmp`, `.tiff`).
 
 | Option | Meaning | Default |
@@ -232,18 +273,10 @@ $ vidfix info clip.mp4
  audio         aac · stereo (left+right) · normal quality (44100 Hz)
 ```
 
-Everything reads in plain words, with the technical value kept in brackets:
-the type says whether the file is video or audio, durations are in seconds
-(`1m 30s (90.00 seconds)` for longer files), common resolutions get their
-everyday name (`1080p`, `4k`), color formats a plain label (`standard`,
-`10-bit`), audio channels show as `mono`/`stereo`/`5.1`/`7.1` instead of a
-channel count (`stereo (left+right)`, `5.1 surround`), and sound quality in
-everyday words (`normal quality (44100 Hz)`, `high quality`, `low quality`). The file type is resolved from the file's `major_brand` tag
-(mp4/mov/m4a/3gp) or the extension — not the raw demuxer list
-(`mov,mp4,m4a,3gp,3g2,mj2`); `--json` keeps the raw string as `demuxer` and the
-tag as `major_brand` alongside the friendly `container`. Broadcast rates get
-their preset-family label in the fps line (`df30`, `df60`, `pal25`, `pal50`,
-`film24`, `film23976`) so you can read them at a glance.
+Everything reads in plain words, with the technical value kept in brackets —
+`1080p (1920x1080)`, `stereo (left+right)`, `normal quality (44100 Hz)`.
+Broadcast rates get their preset name (`df30`, `pal25`, `film24`, …). `--json`
+gives every raw value for scripts.
 
 ### `vidfix caption` — burn text into a video
 
@@ -285,12 +318,14 @@ vidfix attach clip.mp4 --audio track.m4a --subs subs.srt -o out.mkv # all at onc
 |---|---|---|
 | `-o, --output` | Output file path | required |
 | `--audio` | Audio file to add as a track (repeat for multiple tracks) | — |
-| `--subs` | Subtitle file (.srt/.vtt) to add | — |
+| `--subs` | Subtitle file (.srt/.vtt/.ass/.ssa) to add | — |
 | `--burn` | Burn subtitles into the picture (else a soft, toggle-able track) | off |
 
-The video is stream-copied (no re-encode, no quality loss) unless subtitles are
-burned in. Repeat `--audio` to add several tracks (one per file, in order) — it
-works on any video, including a `vidfix generate` clip. `.flv` holds only one
+The video is stream-copied (no re-encode, no quality loss) whenever the output
+can hold it cleanly; otherwise — burned subtitles, a codec the output can't hold,
+or `.avi`/`.mpg` on either side — it is re-encoded so the file always plays.
+Repeat `--audio` to add several tracks (one per file, in order) — it works on
+any video, including a `vidfix generate` clip. `.flv` holds only one
 audio track; use `.mkv`/`.mp4`/`.mov` for more. Soft subtitles need a
 `.mp4`/`.mov`/`.mkv`/`.webm` output — for other containers use `--burn`.
 
@@ -308,8 +343,9 @@ vidfix format take.wav -o take.flac     # audio to another audio format
 The output extension picks the format — the only option is `-o, --output` (required).
 Video targets: `mp4`, `mov`, `mkv`, `webm`, `avi`, `m4v`, `ts`, `mxf`, `mpg`, `ogv`,
 `flv`, `wmv`, `3gp`, `gif`. Picture targets: `png`, `jpg`, `webp`, `bmp`, `tiff`.
-Audio targets (from a video or another audio file): `wav`, `mp3`, `m4a`, `flac`.
-`generate` and `convert` write those containers too — each picks a codec that plays in it.
+Audio targets (from a video or another audio file): `wav`, `mp3`, `m4a`, `flac`,
+`ogg`, `opus`, `aac`.
+`generate` and `convert` write the same video containers, each with a codec that plays in it.
 
 ### `vidfix variants` — variant grids in parallel
 
@@ -355,17 +391,6 @@ With `--timecode`, DF presets burn semicolon drop-frame notation and NDF/PAL/fil
 presets colon notation, matching broadcast convention. Aliases (`alias: pal25`)
 work in user presets too. Add your own in `~/.config/vidfix/presets.yaml`;
 explicit flags always override.
-
-## Python API
-
-```python
-from vidfix import convert, generate, verify, probe
-
-generate("fixture.mp4", fps="59.94", duration="30s", res="720p")
-info = probe("fixture.mp4")           # MediaInfo (pydantic)
-result = verify("fixture.mp4", duration=30.0)
-assert result.passed
-```
 
 ## vidfix vs moviepy vs raw FFmpeg
 

@@ -35,16 +35,17 @@ def friendly_container(demuxer: str, major_brand: str | None, path: str) -> str:
 
     ffprobe's format_name is the demuxer alias list (e.g.
     "mov,mp4,m4a,3gp,3g2,mj2"); the format tag major_brand pins the real
-    container. When the brand is missing (mkv/webm), the file extension is
-    the sanity fallback for multi-name demuxers.
+    container (other demuxers can carry a stale brand tag copied from an mp4
+    source, so it only counts for that family). When the brand is missing
+    (mkv/webm), the file extension is the sanity fallback for multi-name demuxers.
     """
-    brand = (major_brand or "").strip()
+    names = demuxer.split(",")
+    brand = (major_brand or "").strip() if "mov" in names else ""
     if brand in MAJOR_BRANDS:
         return MAJOR_BRANDS[brand]
     if brand.startswith("3g"):
         return "3gp"
     extension = Path(path).suffix.lstrip(".").lower()
-    names = demuxer.split(",")
     if extension and (extension in names or len(names) > 1):
         return extension
     return demuxer
@@ -176,9 +177,7 @@ def parse_ffmpeg_banner(stderr: str, path: str) -> MediaInfo:
     audio_m = _BANNER_AUDIO_RE.search(stderr)
     duration_m = _BANNER_DURATION_RE.search(stderr)
     if video is None and audio_m is None:
-        raise ProbeError(
-            f"Cannot probe {path}: not a recognizable media file.\n{stderr.strip()[-500:]}"
-        )
+        raise ProbeError(f"Cannot probe {path}: not a recognizable media file.")
 
     duration = 0.0
     bitrate_text = "N/A"

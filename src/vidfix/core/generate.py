@@ -212,7 +212,7 @@ def build_generate_args(
             if suffix in (".jpg", ".jpeg"):
                 args += ["-q:v", "2"]
         else:
-            args += video_codec_args(codec, output)
+            args += video_codec_args(codec, output, fast=True)
 
     if audio == "none":
         args += ["-an"]
@@ -248,8 +248,8 @@ def generate(
     on_progress: ProgressCallback | None = None,
 ) -> Path:
     """Generate a synthetic test video matching the given specs exactly."""
-    from vidfix.core.caption import caption_filter, write_caption_file
-    from vidfix.core.formats import VIDEO_EXTS, validate_output_ext
+    from vidfix.core.caption import caption_filter, validate_color, write_caption_file
+    from vidfix.core.formats import VIDEO_EXTS, prepare_output, validate_output_ext
 
     validate_output_ext(str(output), VIDEO_EXTS | AUDIO_EXTS | IMAGE_EXTS)
     out = Path(output)
@@ -286,6 +286,9 @@ def generate(
             font=find_font() if timecode else None,
             caption_vf=caption_vf,
         )
+        if text:
+            validate_color(color, runner)
+        prepare_output(out)
         runner.run(args, on_progress=on_progress)
     finally:
         if textfile is not None:

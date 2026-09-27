@@ -6,6 +6,7 @@ a temp file sidesteps every filter-graph escaping rule for user content.
 
 from __future__ import annotations
 
+import re
 import tempfile
 from pathlib import Path
 
@@ -35,6 +36,37 @@ def _grid() -> dict[str, str]:
 
 POSITIONS: dict[str, str] = _grid()
 
+_SIZE_NAMES = frozenset({"w", "h", "W", "H", "main_w", "main_h", "text_w", "text_h", "tw", "th"})
+
+_COLOR_RE = re.compile(r"[A-Za-z0-9#.@]+")
+
+
+def _check_style(size: str, color: str, start: float | None, end: float | None) -> None:
+    names = set(re.findall(r"[A-Za-z_]+", size))
+    if not re.fullmatch(r"[\w.+\-*/() ]+", size) or not names <= _SIZE_NAMES:
+        raise InvalidSpecError(
+            f"Can't use caption size {size!r}; give pixels like 48 or an expression like h/12."
+        )
+    if not _COLOR_RE.fullmatch(color):
+        raise InvalidSpecError(_color_hint(color))
+    if (start is not None and start < 0) or (end is not None and end <= 0):
+        raise InvalidSpecError("Caption --start/--end must be positive seconds.")
+    if start is not None and end is not None and start >= end:
+        raise InvalidSpecError(f"Caption --start ({start}) must come before --end ({end}).")
+
+
+def _color_hint(color: str) -> str:
+    return f"Unknown color {color!r}; use a name like white or yellow, or hex like #ff0000."
+
+
+def validate_color(color: str, runner: FFmpegRunner) -> None:
+    """Ask FFmpeg itself whether it knows the color name (the list is FFmpeg's)."""
+    if color == "white":
+        return
+    probe = ["-f", "lavfi", "-i", f"color=c={color}:s=16x16:d=0.04", "-f", "null", "-"]
+    if runner.run(probe, check=False).returncode != 0:
+        raise InvalidSpecError(_color_hint(color))
+
 
 def caption_filter(
     textfile: str,
@@ -46,6 +78,7 @@ def caption_filter(
     end: float | None = None,
 ) -> str:
     """Pure builder for a caption drawtext filter."""
+    _check_style(str(size), color, start, end)
     if position not in POSITIONS:
         raise InvalidSpecError(
             f"Unknown position {position!r}; expected one of: {', '.join(POSITIONS)}."
@@ -92,10 +125,14 @@ def caption(
     on_progress: ProgressCallback | None = None,
 ) -> Path:
     """Burn a caption into an existing video (audio is re-encoded for the output box)."""
-    from vidfix.core.formats import VIDEO_EXTS, validate_output_ext
+    from vidfix.core.formats import VIDEO_EXTS, prepare_output, validate_output_ext
+    from vidfix.core.probe import probe
 
     validate_output_ext(str(output), VIDEO_EXTS)
-    runner = drawtext_runner(runner or FFmpegRunner())
+    runner = runner or FFmpegRunner()
+    if probe(input_path, runner=runner).video_codec == "none":
+        raise InvalidSpecError(f"{input_path} has no video to caption.")
+    runner = drawtext_runner(runner)
     textfile = write_caption_file(text)
     try:
         vf = caption_filter(
@@ -107,6 +144,8 @@ def caption(
             start=start,
             end=end,
         )
+        validate_color(color, runner)
+        prepare_output(output, input_path)
         codec = default_codec_for(str(output))
         args = [
             "-i",

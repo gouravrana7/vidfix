@@ -1,16 +1,23 @@
 """Attach existing streams onto a video: external audio and/or a subtitle file.
 
 Subtitles go in as a soft (toggle-able) track by default, or burned into the
-picture with ``burn=True``. Pure FFmpeg muxing — no re-encode of the video
-unless subtitles are burned in.
+picture with ``burn=True``. The video is stream-copied when the source codec and
+both containers allow it cleanly; otherwise (or when burning) it is re-encoded.
+Audio is always encoded for the output container.
 """
 
 from __future__ import annotations
 
 from collections.abc import Sequence
+from fractions import Fraction
 from pathlib import Path
 
-from vidfix.core.capabilities import validate_audio_stream_count
+from vidfix.core.capabilities import (
+    can_copy_video,
+    validate_audio_stream_count,
+    validate_channels,
+    validate_fps,
+)
 from vidfix.core.ffmpeg import (
     FFmpegRunner,
     ProgressCallback,
@@ -29,27 +36,12 @@ SUBTITLE_CODECS = {
 }
 
 
-ANNEXB_FILTERS = {"h264": "h264_mp4toannexb", "h265": "hevc_mp4toannexb"}
-
-ANNEXB_CONTAINERS = frozenset({".mpg", ".mpeg"})
+SUBTITLE_EXTS = frozenset({".srt", ".vtt", ".ass", ".ssa"})
 
 
 def subtitle_codec(output: str) -> str:
     """The soft-subtitle codec the output container wants (mov_text/srt/…)."""
     return SUBTITLE_CODECS.get(Path(output).suffix.lower(), "copy")
-
-
-def annexb_args(output: str, video_codec: str | None) -> list[str]:
-    """Bitstream filter needed to stream-copy h264/h265 into MPEG program streams.
-
-    The muxer writes whatever bytes it is handed; length-prefixed h264 (the mp4
-    and mkv flavour) goes in without start codes and the video reads back as
-    nothing at all. .ts gets the same filter inserted by FFmpeg itself.
-    """
-    if Path(output).suffix.lower() not in ANNEXB_CONTAINERS:
-        return []
-    bsf = ANNEXB_FILTERS.get(video_codec or "")
-    return ["-bsf:v", bsf] if bsf else []
 
 
 def build_attach_args(
@@ -78,6 +70,11 @@ def build_attach_args(
         raise InvalidSpecError(
             "GIF can't hold audio or subtitle tracks; attach to a video container "
             "like .mp4/.mkv/.mov instead."
+        )
+    if subs is not None and Path(subs).suffix.lower() not in SUBTITLE_EXTS:
+        raise InvalidSpecError(
+            f"{subs} isn't a subtitle file; use one of: "
+            f"{', '.join(sorted(e.lstrip('.') for e in SUBTITLE_EXTS))}."
         )
     if subs is not None and not burn and out_ext not in SUBTITLE_CODECS:
         raise InvalidSpecError(
@@ -113,15 +110,14 @@ def build_attach_args(
     if burn:
         assert subs is not None
         args += ["-vf", f"subtitles='{escape_filter_path(subs)}'"]
+    if burn or not can_copy_video(video, output, video_codec):
         args += video_codec_args(default_codec_for(output), output)
     else:
-        args += ["-c:v", "copy", *annexb_args(output, video_codec)]
+        args += ["-c:v", "copy"]
 
+    args += audio_codec_args(output)
     if audio_indices:
-        args += audio_codec_args(output)
         args += ["-shortest"]
-    else:
-        args += ["-c:a", "copy"]
 
     if subs_idx is not None:
         args += ["-c:s", subtitle_codec(output)]
@@ -143,22 +139,11 @@ def attach(
 
     ``audio`` may be a single path or a list of paths (one output track each).
     """
+    from vidfix.core.ffmpeg import CODEC_PROBE_NAMES
+    from vidfix.core.formats import prepare_output
+    from vidfix.core.probe import probe
+
     runner = runner or FFmpegRunner()
-    vidfix_codec = None
-    if burn:
-        from vidfix.core.generate import drawtext_runner
-
-        runner = drawtext_runner(runner)
-    else:
-        from vidfix.core.capabilities import validate_codec
-        from vidfix.core.ffmpeg import CODEC_PROBE_NAMES
-        from vidfix.core.probe import probe
-
-        source = probe(video, runner=runner)
-        by_probe_name = {probed: name for name, probed in CODEC_PROBE_NAMES.items()}
-        vidfix_codec = by_probe_name.get(source.video_codec)
-        if vidfix_codec is not None:
-            validate_codec(vidfix_codec, str(output))
     if audio is None:
         audios = None
     elif isinstance(audio, (str, Path)):
@@ -168,13 +153,31 @@ def attach(
     for extra in [*(audios or []), *([str(subs)] if subs is not None else [])]:
         if not Path(extra).is_file():
             raise InvalidSpecError(f"File not found: {extra}")
+    source = probe(video, runner=runner)
+    if source.video_codec == "none":
+        raise InvalidSpecError(f"{video} has no video to attach onto.")
+    validate_fps(Fraction(source.fps), str(output))
+    kept = [source.audio] if not audios and source.audio is not None else []
+    for track in audios or []:
+        track_audio = probe(track, runner=runner).audio
+        if track_audio is None:
+            raise InvalidSpecError(f"{track} has no audio track to attach.")
+        kept.append(track_audio)
+    for info in kept:
+        validate_channels(info.channels or 0, str(output))
+    by_probe_name = {probed: name for name, probed in CODEC_PROBE_NAMES.items()}
     args = build_attach_args(
         str(video),
         str(output),
         audios=audios,
         subs=str(subs) if subs is not None else None,
         burn=burn,
-        video_codec=vidfix_codec,
+        video_codec=by_probe_name.get(source.video_codec),
     )
+    prepare_output(output, video, *(audios or []), *([subs] if subs is not None else []))
+    if burn:
+        from vidfix.core.generate import drawtext_runner
+
+        runner = drawtext_runner(runner)
     runner.run(args, on_progress=on_progress)
     return Path(output)
