@@ -146,6 +146,8 @@ def build_convert_plan(
             vf.append(f"minterpolate=fps={rate}:mi_mode=mci")
         else:
             vf.append(f"fps=fps={rate}")
+    elif extending and extend_mode == "loop" and source.fps_fraction > 0:
+        vf.append(f"fps=fps={fps_to_ffmpeg(source.fps_fraction)}")
     if duration is not None and duration > source.duration and extend_mode == "freeze":
         vf.append(f"tpad=stop_mode=clone:stop_duration={duration - source.duration}")
     vf += overlay_vf

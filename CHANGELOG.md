@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] - 2026-10-19
+
+### What's new
+
+- **More exact: looping a clip to make it longer keeps its frame rate.**
+  Stretching a 1-minute 29.97 fps clip to 5 minutes with loop now gives
+  exactly 29.97 fps and 5:00, so `verify` passes.
+
+### Fixed
+
+- `convert --extend-mode loop` (and "loop" in the wizard) drifted the frame
+  rate at every loop point (29.97 came out as 29.957). The output now keeps the
+  source frame rate exactly.
+
 ## [0.4.0] - 2026-09-27
 
 ### What's new
