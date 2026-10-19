@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import tempfile
+from fractions import Fraction
 from functools import lru_cache
 from pathlib import Path
 
@@ -65,6 +66,16 @@ class TestGenerateProbe:
         out = tmp_path / "ext.mp4"
         convert(tiny_clip, out, duration="2")
         assert probe(out).duration == pytest.approx(2.0, abs=0.15)
+
+    def test_convert_extend_loop_keeps_drop_frame_rate(self, tmp_path: Path) -> None:
+        from vidfix import convert, verify
+
+        src = tmp_path / "df.mov"
+        generate(src, fps="29.97", duration="2", res="160x120", pattern="testsrc")
+        out = tmp_path / "looped.mov"
+        convert(src, out, duration="7", extend_mode="loop")
+        assert verify(out, fps="29.97", duration="7").passed
+        assert probe(out).fps_fraction == Fraction(30000, 1001)
 
     def test_generate_timecode(self, tmp_path: Path) -> None:
         from vidfix.core.generate import drawtext_available

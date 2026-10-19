@@ -91,6 +91,28 @@ class TestExtend:
         assert p.args[p.args.index("-stream_loop") + 1] == "-1"
         assert p.args[p.args.index("-t") + 1] == "25.0"
 
+    def test_loop_keeps_source_frame_rate(self) -> None:
+        p = build_convert_plan(
+            "in.mp4", "out.mp4", source(duration=10.0), duration=25.0, extend_mode="loop"
+        )
+        assert p.args[p.args.index("-vf") + 1] == "fps=fps=30"
+
+    def test_loop_unknown_source_rate_adds_no_filter(self) -> None:
+        src = source(duration=10.0).model_copy(update={"fps": "0"})
+        p = build_convert_plan("in.mp4", "out.mp4", src, duration=25.0, extend_mode="loop")
+        assert "-vf" not in p.args
+
+    def test_loop_with_fps_sets_rate_once(self) -> None:
+        p = build_convert_plan(
+            "in.mp4",
+            "out.mp4",
+            source(duration=10.0),
+            fps=Fraction(60),
+            duration=25.0,
+            extend_mode="loop",
+        )
+        assert p.args[p.args.index("-vf") + 1] == "fps=fps=60"
+
     def test_bad_extend_mode(self) -> None:
         with pytest.raises(InvalidSpecError):
             build_convert_plan("in.mp4", "out.mp4", source(), extend_mode="stretch")
