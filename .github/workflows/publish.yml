@@ -27,7 +27,7 @@ jobs:
             echo "release=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@v7
         if: steps.check.outputs.release == 'true'
         with:
           python-version: "3.12"
