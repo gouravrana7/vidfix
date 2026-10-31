@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.2] - 2026-10-31
+
+### Fixed
+
+- **Windows: every command that wrote a file crashed.** `vidfix generate`,
+  `convert`, `caption` and the rest printed a green tick on success, which a
+  console on a legacy code page cannot encode, so the command died with
+  `UnicodeEncodeError: 'charmap' codec can't encode character '\u2713'`
+  instead of reporting the file it had just written. The CLI now sets its own
+  output streams to UTF-8.
+
+### Internal
+
+- New `tests/smoke/` and `tests/e2e/` layers run the real CLI against real
+  files on every platform in CI. The existing tests drive the commands with
+  the FFmpeg layer mocked, or call the Python functions directly; neither runs
+  what a user runs, which is why the Windows crash above went unnoticed.
+
 ## [0.4.1] - 2026-10-19
 
 ### What's new
