@@ -90,6 +90,8 @@ testpaths = ["tests"]
 addopts = "-q"
 markers = [
     "integration: tests that invoke the real FFmpeg binary (slower)",
+    "smoke: does it start at all -- no encoding, under a second",
+    "e2e: the real CLI binary on real files, start to finish (slowest)",
 ]
 
 [tool.coverage.run]
