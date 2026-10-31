@@ -22,8 +22,15 @@ pytestmark = pytest.mark.smoke
 # Every command the README and --help promise. A command disappearing from the
 # CLI is a breaking change, and this is the only test that would notice.
 COMMANDS = (
-    "generate", "caption", "attach", "convert",
-    "format", "verify", "info", "variants", "preset",
+    "generate",
+    "caption",
+    "attach",
+    "convert",
+    "format",
+    "verify",
+    "info",
+    "variants",
+    "preset",
 )
 
 TIMEOUT = 60
@@ -37,7 +44,10 @@ def cli(*args: str) -> subprocess.CompletedProcess[str]:
     """
     return subprocess.run(
         [sys.executable, "-m", "vidfix", *args],
-        capture_output=True, text=True, timeout=TIMEOUT, input="",
+        capture_output=True,
+        text=True,
+        timeout=TIMEOUT,
+        input="",
     )
 
 
@@ -67,8 +77,9 @@ def test_the_version_flag_matches_the_package():
 
 def test_the_version_matches_the_project_metadata():
     pyproject = (Path(__file__).resolve().parents[2] / "pyproject.toml").read_text()
-    assert f'version = "{vidfix.__version__}"' in pyproject, \
+    assert f'version = "{vidfix.__version__}"' in pyproject, (
         "pyproject and vidfix.__version__ disagree"
+    )
 
 
 def test_no_arguments_opens_the_wizard_without_crashing():
@@ -94,8 +105,9 @@ def test_the_console_script_is_installed():
     script = Path(sys.executable).parent / "vidfix"
     if not script.exists():
         pytest.skip("console script not installed in this environment")
-    done = subprocess.run([str(script), "--version"], capture_output=True,
-                          text=True, timeout=TIMEOUT)
+    done = subprocess.run(
+        [str(script), "--version"], capture_output=True, text=True, timeout=TIMEOUT
+    )
     assert done.returncode == 0, done.stderr
     assert vidfix.__version__ in done.stdout
 

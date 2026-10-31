@@ -28,7 +28,10 @@ TIMEOUT = 300
 def cli(*args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [sys.executable, "-m", "vidfix", *args],
-        capture_output=True, text=True, timeout=TIMEOUT, input="",
+        capture_output=True,
+        text=True,
+        timeout=TIMEOUT,
+        input="",
     )
 
 
@@ -60,9 +63,7 @@ class TestGenerate:
         assert "Traceback" not in done.stderr
         assert "--output" in done.stdout + done.stderr
 
-    def test_an_impossible_spec_is_refused_without_writing_a_file(
-        self, tmp_path: Path
-    ) -> None:
+    def test_an_impossible_spec_is_refused_without_writing_a_file(self, tmp_path: Path) -> None:
         out = tmp_path / "bad.mp4"
         done = cli("generate", "-o", str(out), "--fps", "0", "--duration", "1")
         assert done.returncode != 0
@@ -170,11 +171,9 @@ class TestTheWholeJourney:
         source = tmp_path / "source.mp4"
         final = tmp_path / "final.mkv"
 
-        ok("generate", "-o", str(source), "--fps", "30", "--duration", "1",
-           "--res", "160x120")
+        ok("generate", "-o", str(source), "--fps", "30", "--duration", "1", "--res", "160x120")
         ok("convert", str(source), "-o", str(final), "--fps", "15", "--res", "80x80")
-        gate = cli("verify", str(final), "--fps", "15", "--res", "80x80",
-                   "--duration", "1")
+        gate = cli("verify", str(final), "--fps", "15", "--res", "80x80", "--duration", "1")
         assert gate.returncode == 0, gate.stdout
 
         info = probe(final)
