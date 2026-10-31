@@ -1,10 +1,30 @@
+# Keep dependencies current without anyone having to remember to check.
+# Security updates arrive as their own PRs the moment an advisory lands;
+# the weekly schedule below is for ordinary version drift.
 version: 2
 updates:
-  - package-ecosystem: uv
-    directory: /
+  - package-ecosystem: "uv"
+    directory: "/"
     schedule:
-      interval: weekly
-  - package-ecosystem: github-actions
-    directory: /
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    groups:
+      # One PR for the dev toolchain: these never affect what users install.
+      dev-tooling:
+        patterns: ["pytest*", "ruff", "mypy", "types-*", "coverage"]
+        update-types: ["minor", "patch"]
+      # Runtime patches together; a minor or major gets its own PR, because
+      # imageio-ffmpeg ships the FFmpeg binary and a bump can change which
+      # filters and codecs are available.
+      runtime-patches:
+        patterns: ["*"]
+        exclude-patterns: ["pytest*", "ruff", "mypy", "types-*", "coverage"]
+        update-types: ["patch"]
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
     schedule:
-      interval: weekly
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 3
