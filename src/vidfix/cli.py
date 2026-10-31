@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import contextlib
+import sys
 from pathlib import Path
 from typing import Annotated, NoReturn
 
@@ -30,6 +32,13 @@ app = typer.Typer(
     ),
     rich_markup_mode="rich",
 )
+# A Windows console still defaults to a legacy code page, where printing
+# "✓" raises UnicodeEncodeError and takes the whole command down with it.
+# This module is the CLI entry point, so it owns its own streams.
+for _stream in (sys.stdout, sys.stderr):
+    with contextlib.suppress(AttributeError, ValueError, OSError):
+        _stream.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[union-attr]
+
 console = Console()
 err_console = Console(stderr=True)
 
