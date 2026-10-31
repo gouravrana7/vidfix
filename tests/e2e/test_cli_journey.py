@@ -27,13 +27,28 @@ TIMEOUT = 300
 
 
 def cli(*args: str) -> subprocess.CompletedProcess[str]:
+    """Run the CLI the way a user does, through the module entry point.
+
+    stdin is DEVNULL because with no arguments the CLI opens an interactive
+    wizard and a test must never wait on a prompt. It is DEVNULL rather than
+    `input=""`, which on Windows returned a CompletedProcess whose stdout was
+    None. The encoding is explicit so a Windows runner does not decode the
+    output with its local code page.
+    """
     return subprocess.run(
         [sys.executable, "-m", "vidfix", *args],
         capture_output=True,
+        stdin=subprocess.DEVNULL,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         timeout=TIMEOUT,
-        input="",
     )
+
+
+def said(done: subprocess.CompletedProcess[str]) -> str:
+    """Both streams as one string. Rich sends errors to either one."""
+    return (done.stdout or "") + (done.stderr or "")
 
 
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
@@ -44,9 +59,14 @@ def plain(text: str) -> str:
     return ANSI.sub("", text).replace("\n", " ")
 
 
+def spoke(done: subprocess.CompletedProcess[str]) -> str:
+    """Both streams, de-coloured and unwrapped."""
+    return plain(said(done))
+
+
 def ok(*args: str) -> subprocess.CompletedProcess[str]:
     done = cli(*args)
-    assert done.returncode == 0, f"vidfix {' '.join(args)} failed:\n{done.stdout}\n{done.stderr}"
+    assert done.returncode == 0, f"vidfix {' '.join(args)} failed:\n{said(done)}"
     return done
 
 
@@ -69,14 +89,14 @@ class TestGenerate:
     def test_a_missing_output_flag_is_a_clean_error(self, tmp_path: Path) -> None:
         done = cli("generate", "--fps", "30")
         assert done.returncode != 0
-        assert "Traceback" not in done.stderr
-        assert "Usage" in plain(done.stdout + done.stderr)
+        assert "Traceback" not in said(done)
+        assert "Usage" in spoke(done)
 
     def test_an_impossible_spec_is_refused_without_writing_a_file(self, tmp_path: Path) -> None:
         out = tmp_path / "bad.mp4"
         done = cli("generate", "-o", str(out), "--fps", "0", "--duration", "1")
         assert done.returncode != 0
-        assert "Traceback" not in done.stderr
+        assert "Traceback" not in said(done)
         assert not out.exists(), "a refused spec must not leave a partial file behind"
 
 
@@ -89,7 +109,7 @@ class TestVerifyExitCode:
 
     def test_it_exits_zero_when_the_file_matches(self, clip: Path) -> None:
         done = cli("verify", str(clip), "--fps", "30", "--res", "160x120")
-        assert done.returncode == 0, done.stdout
+        assert done.returncode == 0, said(done)
 
     def test_it_exits_one_when_the_file_does_not_match(self, clip: Path) -> None:
         done = cli("verify", str(clip), "--fps", "60")
@@ -103,14 +123,14 @@ class TestVerifyExitCode:
 
     def test_the_json_output_is_machine_readable(self, clip: Path) -> None:
         done = cli("verify", str(clip), "--fps", "30", "--json")
-        assert done.returncode == 0, done.stdout
-        payload = json.loads(done.stdout)
+        assert done.returncode == 0, said(done)
+        payload = json.loads(done.stdout or "")
         assert payload["passed"] is True
 
     def test_the_json_output_still_parses_when_the_gate_fails(self, clip: Path) -> None:
         done = cli("verify", str(clip), "--fps", "60", "--json")
         assert done.returncode == 1
-        assert json.loads(done.stdout)["passed"] is False
+        assert json.loads(done.stdout or "")["passed"] is False
 
 
 class TestConvert:
@@ -126,13 +146,13 @@ class TestConvert:
         out = tmp_path / "chained.mp4"
         ok("convert", str(clip), "-o", str(out), "--fps", "15", "--res", "120x120")
         done = cli("verify", str(out), "--fps", "15", "--res", "120x120")
-        assert done.returncode == 0, done.stdout
+        assert done.returncode == 0, said(done)
 
     def test_a_missing_input_fails_before_touching_the_output(self, tmp_path: Path) -> None:
         out = tmp_path / "never.mp4"
         done = cli("convert", str(tmp_path / "ghost.mp4"), "-o", str(out), "--fps", "15")
         assert done.returncode != 0
-        assert "Traceback" not in done.stderr
+        assert "Traceback" not in said(done)
         assert not out.exists()
 
 
@@ -150,7 +170,7 @@ class TestCaption:
         done = cli("caption", str(clip), "-o", str(out), "--text", "hello")
         if done.returncode != 0 and "drawtext" in plain(done.stdout + done.stderr):
             pytest.skip("the bundled FFmpeg on this platform has no drawtext filter")
-        assert done.returncode == 0, done.stdout + done.stderr
+        assert done.returncode == 0, said(done) + done.stderr
         before, after = probe(clip), probe(out)
         assert after.duration == pytest.approx(before.duration, abs=0.2)
         assert (after.width, after.height) == (before.width, before.height)
@@ -169,12 +189,12 @@ class TestVariants:
 class TestInfo:
     def test_the_json_output_round_trips(self, clip: Path) -> None:
         done = ok("info", str(clip), "--json")
-        payload = json.loads(done.stdout)
+        payload = json.loads(done.stdout or "")
         assert payload["width"] == 160
         assert payload["container"]
 
     def test_the_table_output_names_the_file(self, clip: Path) -> None:
-        assert clip.name in ok("info", str(clip)).stdout
+        assert clip.name in spoke(ok("info", str(clip)))
 
 
 class TestTheWholeJourney:

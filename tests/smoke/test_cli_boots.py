@@ -39,40 +39,50 @@ TIMEOUT = 60
 def cli(*args: str) -> subprocess.CompletedProcess[str]:
     """Run the CLI the way a user does, through the module entry point.
 
-    stdin is closed: with no arguments the CLI opens an interactive wizard,
-    and a test must never sit waiting on a prompt.
+    stdin is DEVNULL because with no arguments the CLI opens an interactive
+    wizard and a test must never wait on a prompt. It is DEVNULL rather than
+    `input=""`, which on Windows returned a CompletedProcess whose stdout was
+    None. The encoding is explicit so a Windows runner does not decode the
+    output with its local code page.
     """
     return subprocess.run(
         [sys.executable, "-m", "vidfix", *args],
         capture_output=True,
+        stdin=subprocess.DEVNULL,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         timeout=TIMEOUT,
-        input="",
     )
+
+
+def said(done: subprocess.CompletedProcess[str]) -> str:
+    """Both streams as one string. Rich sends errors to either one."""
+    return (done.stdout or "") + (done.stderr or "")
 
 
 def test_the_cli_starts_and_prints_help():
     done = cli("--help")
-    assert done.returncode == 0, done.stderr
-    assert "Usage" in done.stdout
+    assert done.returncode == 0, said(done)
+    assert "Usage" in said(done)
 
 
 @pytest.mark.parametrize("command", COMMANDS)
 def test_every_command_is_still_registered(command: str):
-    assert command in cli("--help").stdout
+    assert command in said(cli("--help"))
 
 
 @pytest.mark.parametrize("command", COMMANDS)
 def test_every_command_explains_itself(command: str):
     done = cli(command, "--help")
-    assert done.returncode == 0, f"{command} --help failed: {done.stderr}"
-    assert done.stdout.strip(), f"{command} --help printed nothing"
+    assert done.returncode == 0, f"{command} --help failed: {said(done)}"
+    assert said(done).strip(), f"{command} --help printed nothing"
 
 
 def test_the_version_flag_matches_the_package():
     done = cli("--version")
-    assert done.returncode == 0, done.stderr
-    assert vidfix.__version__ in done.stdout
+    assert done.returncode == 0, said(done)
+    assert vidfix.__version__ in said(done)
 
 
 def test_the_version_matches_the_project_metadata():
@@ -86,14 +96,14 @@ def test_no_arguments_opens_the_wizard_without_crashing():
     """With no arguments the CLI is documented to start an interactive wizard.
     With stdin closed it must bow out cleanly, not traceback."""
     done = cli()
-    assert "Traceback" not in done.stderr, done.stderr
-    assert done.stdout.strip(), "the wizard printed nothing at all"
+    assert "Traceback" not in said(done), said(done)
+    assert said(done).strip(), "the wizard printed nothing at all"
 
 
 def test_an_unknown_command_fails_cleanly():
     done = cli("definitely-not-a-command")
     assert done.returncode != 0
-    assert "Traceback" not in done.stderr
+    assert "Traceback" not in said(done)
 
 
 def test_the_public_api_is_importable():
@@ -127,14 +137,14 @@ def test_the_ffmpeg_binary_can_be_found():
 
 def test_presets_can_be_listed_without_touching_a_file():
     done = cli("preset", "list")
-    assert done.returncode == 0, done.stderr
-    assert done.stdout.strip()
+    assert done.returncode == 0, said(done)
+    assert said(done).strip()
 
 
 def test_probing_a_missing_file_is_a_clean_error_not_a_crash(tmp_path: Path):
     done = cli("info", str(tmp_path / "nope.mp4"))
     assert done.returncode != 0
-    assert "Traceback" not in done.stderr
+    assert "Traceback" not in said(done)
 
 
 def test_verify_with_no_expectations_refuses_instead_of_passing(tmp_path: Path):
@@ -143,12 +153,12 @@ def test_verify_with_no_expectations_refuses_instead_of_passing(tmp_path: Path):
     target.write_bytes(b"not a video")
     done = cli("verify", str(target))
     assert done.returncode != 0
-    assert "Traceback" not in done.stderr
+    assert "Traceback" not in said(done)
 
 
 def test_json_output_is_valid_json_when_the_input_is_bad(tmp_path: Path):
     """A --json flag that emits a half-written table on error is unusable in CI."""
     done = cli("info", str(tmp_path / "nope.mp4"), "--json")
     assert done.returncode != 0
-    if done.stdout.strip():
+    if (done.stdout or "").strip():
         json.loads(done.stdout)
