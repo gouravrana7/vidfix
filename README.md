@@ -98,7 +98,7 @@ Same features, one import, the same spec forms as the command line:
 from vidfix import convert, generate, verify, probe
 
 generate("fixture.mp4", fps="59.94", duration="30s", res="720p")
-info = probe("fixture.mp4")           # MediaInfo (pydantic)
+info = probe("fixture.mp4")  # MediaInfo (pydantic)
 result = verify("fixture.mp4", duration=30.0)
 assert result.passed
 ```
