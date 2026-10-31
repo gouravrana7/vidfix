@@ -113,12 +113,16 @@ def test_the_console_script_is_installed():
 
 
 def test_the_ffmpeg_binary_can_be_found():
-    """Every real command needs this. Without it the CLI is decoration."""
-    from vidfix.core.ffmpeg import find_ffmpeg, find_ffprobe
+    """Every real command needs this. Without it the CLI is decoration.
 
-    for name, found in (("ffmpeg", find_ffmpeg()), ("ffprobe", find_ffprobe())):
-        assert found, f"{name} could not be resolved"
-        assert Path(found).exists(), f"{name} resolved to a missing path: {found}"
+    ffprobe is deliberately optional: imageio-ffmpeg does not bundle it and
+    vidfix probes through ffmpeg instead, so only ffmpeg is required here.
+    """
+    from vidfix.core.ffmpeg import find_ffmpeg
+
+    found = find_ffmpeg()
+    assert found, "ffmpeg could not be resolved"
+    assert Path(found).exists(), f"ffmpeg resolved to a missing path: {found}"
 
 
 def test_presets_can_be_listed_without_touching_a_file():
